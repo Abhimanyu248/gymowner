@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
 import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppStore } from '../store/useAppStore';
@@ -25,6 +26,34 @@ export default function BackupRestoreScreen() {
   };
 
   const hideAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
+
+  const openFile = async (fileUri, mimeType) => {
+    try {
+      if (Platform.OS === 'android') {
+        const contentUri = await FileSystem.getContentUriAsync(fileUri);
+        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+          data: contentUri,
+          flags: 1, // Intent.FLAG_GRANT_READ_URI_PERMISSION
+          type: mimeType,
+        });
+      } else {
+        await Sharing.shareAsync(fileUri, {
+          mimeType,
+          dialogTitle: 'Open File',
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to open file directly:', err);
+      try {
+        await Sharing.shareAsync(fileUri, {
+          mimeType,
+          dialogTitle: 'Open File',
+        });
+      } catch (shareErr) {
+        showAlert('Error', 'Could not open or share file: ' + shareErr.message, [{ text: 'OK' }], 'error');
+      }
+    }
+  };
 
   const handleChangeBackupDirectory = async () => {
     if (Platform.OS !== 'android') {
@@ -88,6 +117,20 @@ export default function BackupRestoreScreen() {
           await AsyncStorage.setItem('backupDirectoryUri', directoryUri);
         }
 
+        // Cache the file locally to allow opening/viewing it
+        const cacheFileUri = `${FileSystem.cacheDirectory}${fileName}`;
+        await FileSystem.writeAsStringAsync(cacheFileUri, jsonString);
+
+        const openButtons = [
+          { text: 'OK', style: 'cancel' },
+          {
+            text: 'Open File',
+            onPress: async () => {
+              await openFile(cacheFileUri, mimeType);
+            }
+          }
+        ];
+
         setLoadingText('Saving backup to folder...');
         try {
           // Create the file in the selected directory path
@@ -103,7 +146,7 @@ export default function BackupRestoreScreen() {
           showAlert(
             'Backup Created',
             `Backup successfully saved as "${fileName}" in your selected folder.\nSaved: ${members.length} members, ${plans.length} plans, and ${payments.length} payments.`,
-            [{ text: 'OK' }],
+            openButtons,
             'download'
           );
         } catch (writeErr) {
@@ -130,7 +173,7 @@ export default function BackupRestoreScreen() {
           showAlert(
             'Backup Created',
             `Backup successfully saved as "${fileName}" in your selected folder.\nSaved: ${members.length} members, ${plans.length} plans, and ${payments.length} payments.`,
-            [{ text: 'OK' }],
+            openButtons,
             'download'
           );
         }
@@ -142,6 +185,16 @@ export default function BackupRestoreScreen() {
         setLoadingText('Sharing backup...');
         const canShare = await Sharing.isAvailableAsync();
         
+        const openButtons = [
+          { text: 'OK', style: 'cancel' },
+          {
+            text: 'Open File',
+            onPress: async () => {
+              await openFile(fileUri, mimeType);
+            }
+          }
+        ];
+
         if (canShare) {
           await Sharing.shareAsync(fileUri, {
             mimeType,
@@ -151,7 +204,7 @@ export default function BackupRestoreScreen() {
           showAlert(
             'Backup Created',
             `Backup saved with ${members.length} members, ${plans.length} plans, and ${payments.length} payments.`,
-            [{ text: 'OK' }],
+            openButtons,
             'success'
           );
         } else {

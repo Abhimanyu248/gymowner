@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -55,14 +56,42 @@ export default function SettingsScreen({ navigation }) {
   
   const [alertConfig, setAlertConfig] = useState({ visible: false });
 
-  const showAlert = (title, message, type) => {
+  const showAlert = (title, message, type, buttons = null) => {
     setAlertConfig({
       visible: true,
       title,
       message,
       type,
-      buttons: [{ text: 'OK', style: 'default', onPress: () => setAlertConfig({ visible: false }) }]
+      buttons: buttons || [{ text: 'OK', style: 'default', onPress: () => setAlertConfig({ visible: false }) }]
     });
+  };
+
+  const openFile = async (fileUri, mimeType) => {
+    try {
+      if (Platform.OS === 'android') {
+        const contentUri = await FileSystem.getContentUriAsync(fileUri);
+        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+          data: contentUri,
+          flags: 1, // Intent.FLAG_GRANT_READ_URI_PERMISSION
+          type: mimeType,
+        });
+      } else {
+        await Sharing.shareAsync(fileUri, {
+          mimeType,
+          dialogTitle: 'Open File',
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to open file directly:', err);
+      try {
+        await Sharing.shareAsync(fileUri, {
+          mimeType,
+          dialogTitle: 'Open File',
+        });
+      } catch (shareErr) {
+        showAlert('Error', 'Could not open or share file: ' + shareErr.message, 'error');
+      }
+    }
   };
 
   // ── Slide-down gesture ─────────────────────────────────────────────────
@@ -316,6 +345,24 @@ export default function SettingsScreen({ navigation }) {
           await AsyncStorage.setItem('exportDirectoryUri', directoryUri);
         }
 
+        // Cache the file locally to allow opening/viewing it
+        const cacheFileUri = FileSystem.cacheDirectory + filename;
+        await FileSystem.writeAsStringAsync(cacheFileUri, base64Data, {
+          encoding: 'base64',
+        });
+
+        const openButtons = [
+          { text: 'OK', style: 'cancel', onPress: () => setAlertConfig({ visible: false }) },
+          {
+            text: 'Open File',
+            style: 'default',
+            onPress: async () => {
+              setAlertConfig({ visible: false });
+              await openFile(cacheFileUri, mimeType);
+            },
+          },
+        ];
+
         try {
           // Create the file in the selected directory path
           const fileUri = await StorageAccessFramework.createFileAsync(
@@ -333,7 +380,8 @@ export default function SettingsScreen({ navigation }) {
           showAlert(
             'Download Complete',
             `Report successfully saved as ${filename} in your selected folder.`,
-            'download'
+            'download',
+            openButtons
           );
         } catch (writeErr) {
           // If write fails (e.g. permission was revoked or folder deleted), clear stored path and re-ask
@@ -362,7 +410,8 @@ export default function SettingsScreen({ navigation }) {
           showAlert(
             'Download Complete',
             `Report successfully saved as ${filename} in your selected folder.`,
-            'download'
+            'download',
+            openButtons
           );
         }
       } else {
@@ -377,6 +426,18 @@ export default function SettingsScreen({ navigation }) {
         const canShare = await Sharing.isAvailableAsync();
         const UTI = downloadFormat === 'excel' ? 'com.microsoft.excel.xls' : 'com.adobe.pdf';
         
+        const openButtons = [
+          { text: 'OK', style: 'cancel', onPress: () => setAlertConfig({ visible: false }) },
+          {
+            text: 'Open File',
+            style: 'default',
+            onPress: async () => {
+              setAlertConfig({ visible: false });
+              await openFile(fileUri, mimeType);
+            },
+          },
+        ];
+
         if (canShare) {
           await Sharing.shareAsync(fileUri, {
             mimeType,
@@ -386,10 +447,11 @@ export default function SettingsScreen({ navigation }) {
           showAlert(
             'Download Complete',
             `Report successfully exported.`,
-            'download'
+            'download',
+            openButtons
           );
         } else {
-          showAlert('Downloaded', `Report saved to:\n${fileUri}`, 'download');
+          showAlert('Downloaded', `Report saved to:\n${fileUri}`, 'download', openButtons);
         }
       }
     } catch (err) {
