@@ -80,6 +80,10 @@ export default function BackupRestoreScreen() {
 
   // ── BACKUP (JSON Format) ──────────────────────────────────────────────
   const handleBackup = async () => {
+    if(plans.length === 0 || members.length === 0 || payments.length === 0){
+      showAlert('No Data', 'Please add some data (plans, members, payments) before creating a backup.', [{ text: 'OK' }], 'warning');
+      return;
+    }
     setLoading(true);
     setLoadingText('Preparing backup data...');
     try {
@@ -242,7 +246,13 @@ export default function BackupRestoreScreen() {
       setLoadingText('');
 
       if (!backupData.data || !backupData.data.plans || !backupData.data.members) {
-        throw new Error('Invalid backup file format. Missing plans or members data.');
+        showAlert('Restore Failed', 'Invalid backup file format. Missing plans or members data.', [{ text: 'OK' }], 'error');
+        return;
+      }
+
+      if (backupData.userEmail && backupData.userEmail.toLowerCase() !== user?.email?.toLowerCase()) {
+        showAlert('Restore Failed', 'This backup file belongs to another account. You can only restore backups created by your own account.', [{ text: 'OK' }], 'error');
+        return;
       }
 
       const plansCount = backupData.data.plans.length;

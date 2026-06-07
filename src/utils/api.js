@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // local server url
-const API_BASE_URL = 'http://10.138.122.148:3000/api';
+// const API_BASE_URL = 'http://10.138.122.148:3000/api';
 //online server url
-// const API_BASE_URL = 'https://backend-txff.onrender.com/api';
+const API_BASE_URL = 'https://backend-txff.onrender.com/api';
 const AUTH_TOKEN_KEY = 'auth_token';
 const AUTH_USER_KEY = 'auth_user';
 
