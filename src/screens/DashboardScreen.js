@@ -350,6 +350,8 @@ export default function DashboardScreen() {
   return (
     <ScrollView
       style={styles.container}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.primary} />}
       contentContainerStyle={{ paddingBottom: 100 }}
     >
@@ -431,6 +433,7 @@ export default function DashboardScreen() {
             ref={chartScrollRef}
             horizontal
             showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.chartScrollContent}
             onScrollBeginDrag={() => {
               setSelectedPoint(null);

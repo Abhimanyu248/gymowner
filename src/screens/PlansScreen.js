@@ -59,6 +59,12 @@ export default function PlansScreen() {
       return;
     }
 
+    // Ensure the Plan Name contains at least one alphabetic character
+    if (!/[a-zA-Z]/.test(form.name)) {
+      showAlert('Error', 'Plan Name must contain at least one letter.', [{ text: 'OK' }], 'error');
+      return;
+    }
+
     setLoading(true);
 
     const payload = {
@@ -85,6 +91,8 @@ export default function PlansScreen() {
   return (
     <ScrollView
       style={styles.container}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingBottom: spacing.xxl }}
       refreshControl={<RefreshControl refreshing={false} onRefresh={fetchAppData} tintColor={colors.accent} />}
     >
@@ -126,7 +134,7 @@ export default function PlansScreen() {
             <Text style={styles.label}>Amount (₹)</Text>
             <TextInput
               style={styles.input}
-              placeholder="199.99"
+              placeholder="1000"
               keyboardType="numeric"
               value={form.amount}
               onChangeText={(val) => setForm(f => ({ ...f, amount: val }))}

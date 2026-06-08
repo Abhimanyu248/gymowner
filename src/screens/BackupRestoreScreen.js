@@ -304,7 +304,7 @@ export default function BackupRestoreScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
       <View style={styles.header}>
         {Platform.OS === 'android' && (
           <TouchableOpacity 

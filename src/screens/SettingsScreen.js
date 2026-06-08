@@ -491,6 +491,8 @@ export default function SettingsScreen({ navigation }) {
     <>
       <ScrollView
         style={styles.container}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 120 }}
         refreshControl={<RefreshControl refreshing={false} onRefresh={fetchAppData} tintColor={palette.success} />}
       >
@@ -522,7 +524,7 @@ export default function SettingsScreen({ navigation }) {
               onPress={() => {
                 setProfileForm({
                   name: user?.name || '',
-                  phone: user?.phone || '',
+                  phone: user?.phone != null ? user.phone.toString() : '',
                   image: user?.image || '',
                   address: user?.address || '',
                   gstNumber: user?.gstNumber || '',
@@ -742,7 +744,7 @@ export default function SettingsScreen({ navigation }) {
         <View style={styles.centeredModalOverlay}>
           <View style={[styles.centeredModalContent, { maxHeight: '85%' }]}>
             <Text style={styles.modalTitle}>Edit Gym / Profile Details</Text>
-            <ScrollView contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
+            <ScrollView contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
               
               {/* Profile/Logo Image picker */}
               <View style={{ alignItems: 'center', marginVertical: 16 }}>

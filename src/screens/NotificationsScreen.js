@@ -70,7 +70,7 @@ export default function NotificationsScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}>
       
       <View style={styles.header}>
         <View style={[styles.iconContainer, { backgroundColor: `${colors.accent}15` }]}>

@@ -92,7 +92,14 @@ function getPlanDuration(member) {
 }
 
 // ─── Sort & Filter Bottom Sheet ─────────────────────────────────────────────
-function SortFilterSheet({ visible, onClose, sortKey, setSortKey, filterStartDate, setFilterStartDate, filterEndDate, setFilterEndDate, colors, insets }) {
+function SortFilterSheet({
+  visible, onClose,
+  sortKey, setSortKey,
+  filterStartDate, setFilterStartDate,
+  filterEndDate, setFilterEndDate,
+  filterExpiryDays, setFilterExpiryDays,
+  colors, insets
+}) {
   // Single translateY drives everything: open spring, drag tracking, close animation
   // Replaces the old Animated.add(slideAnim.interpolate, dragY) which caused a
   // one-frame snap-back flash (dragY.setValue(0) fired before modal hide)
@@ -102,6 +109,7 @@ function SortFilterSheet({ visible, onClose, sortKey, setSortKey, filterStartDat
   const [localSort, setLocalSort] = useState(sortKey);
   const [localStartDate, setLocalStartDate] = useState(filterStartDate ? new Date(filterStartDate) : null);
   const [localEndDate, setLocalEndDate] = useState(filterEndDate ? new Date(filterEndDate) : null);
+  const [localExpiryDays, setLocalExpiryDays] = useState(filterExpiryDays || '');
   const [showPicker, setShowPicker] = useState(null);
 
   // Open animation — runs whenever visible flips to true
@@ -110,6 +118,7 @@ function SortFilterSheet({ visible, onClose, sortKey, setSortKey, filterStartDat
       setLocalSort(sortKey);
       setLocalStartDate(filterStartDate ? new Date(filterStartDate) : null);
       setLocalEndDate(filterEndDate ? new Date(filterEndDate) : null);
+      setLocalExpiryDays(filterExpiryDays || '');
       translateY.setValue(700);
       backdropAnim.setValue(0);
       Animated.parallel([
@@ -189,16 +198,19 @@ function SortFilterSheet({ visible, onClose, sortKey, setSortKey, filterStartDat
     setSortKey(localSort);
     setFilterStartDate(formatDateISO(localStartDate));
     setFilterEndDate(formatDateISO(localEndDate));
+    setFilterExpiryDays(localExpiryDays);
     dismiss();
   }
 
+  // Reset local state variables
   function reset() {
     setLocalSort(null);
     setLocalStartDate(null);
     setLocalEndDate(null);
+    setLocalExpiryDays('');
   }
 
-  const hasActive = localSort || localStartDate || localEndDate;
+  const hasActive = localSort || localStartDate || localEndDate || localExpiryDays;
   const s = sheetStyles(colors, insets);
 
   return (
@@ -225,7 +237,7 @@ function SortFilterSheet({ visible, onClose, sortKey, setSortKey, filterStartDat
           ) : null}
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
           <Text style={s.sectionLabel}>SORT BY</Text>
           <View style={s.sortGrid}>
             {SORT_OPTIONS.map(opt => {
@@ -309,6 +321,33 @@ function SortFilterSheet({ visible, onClose, sortKey, setSortKey, filterStartDat
               <Text style={s.pickerDoneText}>Done</Text>
             </TouchableOpacity>
           )}
+
+          <Text style={[s.sectionLabel, { marginTop: 20 }]}>FILTER BY EXPIRY DAYS LEFT</Text>
+          <View style={{ position: 'relative', justifyContent: 'center' }}>
+            <TextInput
+              style={[s.input, { paddingRight: 40 }]}
+              placeholder="e.g. 7"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+              value={localExpiryDays}
+              onChangeText={(val) => setLocalExpiryDays(val.replace(/[^0-9]/g, ''))}
+            />
+            {!!localExpiryDays && (
+              <TouchableOpacity
+                onPress={() => setLocalExpiryDays('')}
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  height: 48,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <X size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
         </ScrollView>
 
         <View style={s.applyWrap}>
@@ -334,6 +373,7 @@ export default function MembersScreen({ navigation }) {
   const [sortKey, setSortKey] = useState(null);
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterExpiryDays, setFilterExpiryDays] = useState('');
 
   // Pagination states
   const [isPaginated, setIsPaginated] = useState(true);
@@ -342,10 +382,10 @@ export default function MembersScreen({ navigation }) {
   // Automatically reset to page 1 when any filter, search, or sort option changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filter, filterStartDate, filterEndDate, sortKey]);
+  }, [searchQuery, filter, filterStartDate, filterEndDate, filterExpiryDays, sortKey]);
 
   const hasActiveSort = !!sortKey;
-  const hasActiveFilter = !!filterStartDate || !!filterEndDate;
+  const hasActiveFilter = !!filterStartDate || !!filterEndDate || !!filterExpiryDays;
   const badgeCount = (hasActiveSort ? 1 : 0) + (hasActiveFilter ? 1 : 0);
 
   // Memoized filtered + sorted list — only recomputes when data/search/filter/sort changes
@@ -387,6 +427,17 @@ export default function MembersScreen({ navigation }) {
       });
     }
 
+    // 2️⃣.5️⃣ Expiry days left filter
+    if (filterExpiryDays !== '' && filterExpiryDays !== null && filterExpiryDays !== undefined) {
+      const maxDays = parseInt(filterExpiryDays, 10);
+      if (!isNaN(maxDays)) {
+        filtered = filtered.filter(m => {
+          const daysLeft = calculateDaysLeft(m.expiryDate);
+          return daysLeft !== null && daysLeft >= 0 && daysLeft <= maxDays;
+        });
+      }
+    }
+
     // 3️⃣ Sort
     if (sortKey) {
       filtered = [...filtered].sort((a, b) => {
@@ -417,7 +468,7 @@ export default function MembersScreen({ navigation }) {
     }
 
     return filtered;
-  }, [members, deletedMembers, searchQuery, filter, filterStartDate, filterEndDate, sortKey]);
+  }, [members, deletedMembers, searchQuery, filter, filterStartDate, filterEndDate, filterExpiryDays, sortKey]);
 
   const totalPages = isPaginated ? Math.ceil(result.length / 10) : 1;
   const activePage = Math.min(Math.max(currentPage, 1), totalPages || 1);
@@ -587,6 +638,7 @@ export default function MembersScreen({ navigation }) {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.filters}
         >
           <FilterChip label="All" />
@@ -597,7 +649,7 @@ export default function MembersScreen({ navigation }) {
         </ScrollView>
 
         {/* Active sort/filter summary */}
-        {(sortKey || filterStartDate || filterEndDate) && (
+        {(sortKey || filterStartDate || filterEndDate || filterExpiryDays) && (
           <View style={styles.activeSummary}>
             {sortKey && (
               <View style={styles.activePill}>
@@ -621,11 +673,23 @@ export default function MembersScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             )}
+            {!!filterExpiryDays && (
+              <View style={styles.activePill}>
+                <Text style={styles.activePillText}>
+                  Expires in ≤ {filterExpiryDays} days
+                </Text>
+                <TouchableOpacity onPress={() => setFilterExpiryDays('')} style={{ marginLeft: 6 }}>
+                  <X size={14} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
       </View>
 
       <FlatList
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         data={paginatedResult}
         keyExtractor={item => item._id || item.id}
         contentContainerStyle={styles.list}
@@ -664,6 +728,8 @@ export default function MembersScreen({ navigation }) {
         setFilterStartDate={setFilterStartDate}
         filterEndDate={filterEndDate}
         setFilterEndDate={setFilterEndDate}
+        filterExpiryDays={filterExpiryDays}
+        setFilterExpiryDays={setFilterExpiryDays}
         colors={colors}
         insets={insets}
       />
@@ -727,6 +793,17 @@ const sheetStyles = (colors, insets) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.accent,
+  },
+  input: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: 12,
+    height: 48,
+    color: colors.textPrimary,
+    backgroundColor: colors.surfaceAlt,
+    fontSize: 14,
+    fontWeight: '600',
   },
   sectionLabel: {
     fontSize: 11,

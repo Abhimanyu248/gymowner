@@ -178,9 +178,11 @@ export default function MemberDetailScreen({ route, navigation }) {
     setLoading(true);
     try {
       const joinDate = new Date(renewForm.joinDate);
+      joinDate.setHours(13, 0, 0, 0);
       const nextExpiry = new Date(joinDate);
       nextExpiry.setMonth(nextExpiry.getMonth() + parseInt(pickedPlan.durationMonths || 1, 10));
       nextExpiry.setDate(nextExpiry.getDate() - 1);
+      nextExpiry.setHours(23, 59, 59, 999);
 
       await updateMember(member.id, {
         planId: pickedPlan.id || pickedPlan._id,
@@ -411,6 +413,8 @@ Let's keep making gains! 💯`;
   return (
     <ScrollView
       style={styles.container}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.content}
       scrollEnabled={!showRenewSheet}
       refreshControl={<RefreshControl refreshing={false} onRefresh={fetchAppData} tintColor={colors.accent} />}

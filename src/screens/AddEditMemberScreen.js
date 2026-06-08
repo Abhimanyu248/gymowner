@@ -46,12 +46,12 @@ export default function AddEditMemberScreen({ route, navigation }) {
 
   const [form, setForm] = useState({
     name: existingMember?.name || "",
-    phone: existingMember?.phone || "",
+    phone: existingMember?.phone != null ? existingMember.phone.toString() : "",
     email: existingMember?.email || "",
     age: existingMember?.age ? existingMember.age.toString() : "",
     gender: existingMember?.gender || "male",
     address: existingMember?.address || "",
-    emergencyContact: existingMember?.emergencyContact || "",
+    emergencyContact: existingMember?.emergencyContact != null ? existingMember.emergencyContact.toString() : "",
     planId:
       existingMember?.planId?._id ||
       existingMember?.planId ||
@@ -331,12 +331,15 @@ export default function AddEditMemberScreen({ route, navigation }) {
         expiryDate: existingMember?.expiryDate,
       };
     } else {
+      const joinDate = new Date(form.joinDate);
+      joinDate.setHours(13, 0, 0, 0);
+
       let calculatedExpiryDate = new Date();
       const selectedPlan = plans.find(
         (p) => p.id === form.planId || p._id === form.planId,
       );
       if (selectedPlan && selectedPlan.durationMonths) {
-        calculatedExpiryDate = new Date(form.joinDate);
+        calculatedExpiryDate = new Date(joinDate);
         calculatedExpiryDate.setMonth(
           calculatedExpiryDate.getMonth() + selectedPlan.durationMonths,
         );
@@ -355,7 +358,7 @@ export default function AddEditMemberScreen({ route, navigation }) {
         planId: form.planId,
         photo: uploadedImageUrl,
         status: "active",
-        joinDate: form.joinDate.toISOString(),
+        joinDate: joinDate.toISOString(),
         expiryDate: calculatedExpiryDate.toISOString(),
         paymentMethod: form.paymentMethod,
       };
@@ -432,6 +435,8 @@ export default function AddEditMemberScreen({ route, navigation }) {
   return (
     <ScrollView
       style={styles.container}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingBottom: spacing.xxl }}
       refreshControl={
         <RefreshControl

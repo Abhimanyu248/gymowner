@@ -380,6 +380,8 @@ export default function PaymentsScreen() {
     <View style={styles.root}>
       <ScrollView
         style={styles.container}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.accent} />}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
