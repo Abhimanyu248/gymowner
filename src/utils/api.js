@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // local server url
-const API_BASE_URL = 'http://10.138.122.148:3000/api';
+const API_BASE_URL = 'http://10.59.202.148:3000/api';
 //online server url
 // const API_BASE_URL = 'https://backend-txff.onrender.com/api';
 const AUTH_TOKEN_KEY = 'auth_token';
@@ -377,6 +377,27 @@ class ApiService {
     }
 
     return response.json();
+  }
+
+  // Diet Endpoints
+  async getDietPlan(memberId) {
+    return this.request(`/diet/current?memberId=${memberId}`, {
+      method: 'GET',
+    });
+  }
+
+  async generateDietPlan(payload) {
+    return this.request('/diet/generate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async replaceDietMeal(payload) {
+    return this.request('/diet/replace-meal', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 }
 

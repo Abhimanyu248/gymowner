@@ -19,12 +19,12 @@ export default function LoginScreen() {
   const colors = useThemeColors();
   const styles = getStyles(colors);
 
-  const [isLogin, setIsLogin]   = useState(true);
-  const [name, setName]         = useState('');
-  const [email, setEmail]       = useState('');
+  const [isLogin, setIsLogin] = useState(true);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   // Simple entry animation for the form card
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -68,8 +68,8 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.safeArea}>
-      <ImageBackground 
-        source={{ uri: BACKGROUND_IMAGE }} 
+      <ImageBackground
+        source={{ uri: BACKGROUND_IMAGE }}
         style={styles.backgroundImage}
         resizeMode="cover"
       >

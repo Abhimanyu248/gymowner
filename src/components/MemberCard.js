@@ -4,9 +4,15 @@ import { radius, shadows, spacing } from '../theme/theme';
 import StatusBadge from './StatusBadge';
 import { useThemeColors } from '../theme/palette';
 
-export default function MemberCard({ member, onPress }) {
+function MemberCard({ member, onPress }) {
   const colors = useThemeColors();
   const styles = getStyles(colors);
+  const [imageError, setImageError] = React.useState(false);
+
+  React.useEffect(() => {
+    setImageError(false);
+  }, [member.imageUrl, member.photo]);
+
   const initials = member.name
     ? member.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
     : '??';
@@ -40,8 +46,12 @@ export default function MemberCard({ member, onPress }) {
 
       <View style={styles.content}>
         {/* Avatar */}
-        {member.imageUrl || member.photo ? (
-          <Image source={{ uri: member.imageUrl || member.photo }} style={styles.avatar} />
+        {(member.imageUrl || member.photo) && !imageError ? (
+          <Image
+            source={{ uri: member.imageUrl || member.photo }}
+            style={styles.avatar}
+            onError={() => setImageError(true)}
+          />
         ) : (
           <View style={[styles.avatarPlaceholder, { backgroundColor: `${colors.primary}30` }]}>
             <Text style={[styles.avatarText, { color: colors.primary }]}>{initials}</Text>
@@ -142,3 +152,6 @@ const getStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+export default React.memo(MemberCard);
+

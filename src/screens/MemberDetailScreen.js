@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Platform, TouchableOpacity, Linking, Modal, Pressable, RefreshControl, Animated, Easing, BackHandler } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, Platform, TouchableOpacity, Linking, Modal, Pressable, RefreshControl, Animated, Easing, BackHandler, Switch, TextInput, ActivityIndicator } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Phone, MessageCircle, UserRound, ChevronRight, CalendarDays, MapPin, Activity, AlertCircle, Bell, Key, UserRoundPen, Share2, Mail } from 'lucide-react-native';
+import { Phone, MessageCircle, UserRound, ChevronRight, CalendarDays, MapPin, Activity, AlertCircle, Bell, Key, UserRoundPen, Share2, Mail, CalendarClock, Salad, RefreshCw, Sparkles, ChefHat, Plus, Minus } from 'lucide-react-native';
 import { useAppStore } from '../store/useAppStore';
 import Button from '../components/Button';
 import CustomAlert from '../components/CustomAlert';
@@ -18,7 +18,15 @@ export default function MemberDetailScreen({ route, navigation }) {
   const { members, deletedMembers, deleteMember, restoreMember, plans, updateMember, addPayment, payments, isLoadingData, fetchAppData, sendMemberReminder, getMemberCredentials } = useAppStore();
   const colors = useThemeColors();
   const styles = getStyles(colors);
+
+  const member = members.find((m) => m.id === memberId) || deletedMembers.find((m) => m.id === memberId);
+
   const [loading, setLoading] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  React.useEffect(() => {
+    setImageError(false);
+  }, [memberId, member?.photo, member?.imageUrl]);
   const [reminderLoading, setReminderLoading] = useState(false);
   const [renewForm, setRenewForm] = useState({ membershipType: '', joinDate: '', paymentMethod: 'cash' });
   const [renewError, setRenewError] = useState('');
@@ -29,6 +37,41 @@ export default function MemberDetailScreen({ route, navigation }) {
   const [showRenewSheet, setShowRenewSheet] = useState(false);
   const renewSheetY = React.useRef(new Animated.Value(520)).current;
 
+  // Diet-specific states
+  const [dietLoading, setDietLoading] = useState(false);
+  const [memberDiet, setMemberDiet] = useState(null);
+  const [localDietAccess, setLocalDietAccess] = useState(member?.hasDietAccess || false);
+  const [localDietLimit, setLocalDietLimit] = useState(member?.dietGenerationDailyLimit ?? 3);
+  const [limitUpdating, setLimitUpdating] = useState(false);
+
+  // Tab content switching & loading completion animations
+  const tabFadeAnim = React.useRef(new Animated.Value(0)).current;
+  const tabSlideAnim = React.useRef(new Animated.Value(8)).current;
+
+  React.useEffect(() => {
+    // Only animate if we are not loading the diet tab!
+    // If we are on details or payments tab, we always animate.
+    // If we are on diet tab, we animate only when it's NOT loading (so initially on switch if not loading, or when loading completes).
+    if (activeTab !== 'diet' || !dietLoading) {
+      tabFadeAnim.setValue(0);
+      tabSlideAnim.setValue(8);
+      Animated.parallel([
+        Animated.timing(tabFadeAnim, {
+          toValue: 1,
+          duration: 220,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(tabSlideAnim, {
+          toValue: 0,
+          duration: 220,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [activeTab, dietLoading]);
+
   const showAlert = (title, message, buttons = [{ text: 'OK' }], type = 'info', icon) => {
     setAlertConfig({ visible: true, title, message, buttons, type, icon });
   };
@@ -36,6 +79,78 @@ export default function MemberDetailScreen({ route, navigation }) {
   const hideAlert = () => setAlertConfig((prev) => ({ ...prev, visible: false }));
 
   const [credLoading, setCredLoading] = useState(false);
+
+  
+
+  // Sync state if member details change
+  React.useEffect(() => {
+    if (member) {
+      setLocalDietAccess(member.hasDietAccess || false);
+      setLocalDietLimit(member.dietGenerationDailyLimit ?? 3);
+    }
+  }, [member]);
+
+  React.useEffect(() => {
+    if (activeTab === 'diet' && localDietAccess && member?.id) {
+      fetchMemberDiet();
+    }
+  }, [activeTab, localDietAccess, member?.id]);
+
+  const fetchMemberDiet = async () => {
+    if (!member?.id) return;
+    setDietLoading(true);
+    try {
+      const plan = await api.getDietPlan(member.id);
+      setMemberDiet(plan);
+    } catch (err) {
+      console.warn('Failed to fetch diet plan:', err);
+      setMemberDiet(null);
+    } finally {
+      setDietLoading(false);
+    }
+  };
+
+  const handleToggleDietAccess = async (val) => {
+    setLocalDietAccess(val);
+    try {
+      await updateMember(member.id, { hasDietAccess: val }, true);
+    } catch (err) {
+      setLocalDietAccess(!val);
+      showAlert('Error', err.message || 'Failed to update diet access', [{ text: 'OK' }], 'error');
+    }
+  };
+
+  const handleIncrementLimit = async () => {
+    const nextLimit = (parseInt(localDietLimit, 10) || 3) + 1;
+    if (nextLimit > 99) return;
+    setLocalDietLimit(nextLimit);
+    setLimitUpdating(true);
+    try {
+      await updateMember(member.id, { dietGenerationDailyLimit: nextLimit }, true);
+      showAlert('Success', `Daily generation limit updated to ${nextLimit} successfully.`, [{ text: 'OK' }], 'success');
+    } catch (err) {
+      setLocalDietLimit(member?.dietGenerationDailyLimit ?? 3);
+      showAlert('Error', err.message || 'Failed to update daily limit', [{ text: 'OK' }], 'error');
+    } finally {
+      setLimitUpdating(false);
+    }
+  };
+
+  const handleDecrementLimit = async () => {
+    const nextLimit = (parseInt(localDietLimit, 10) || 3) - 1;
+    if (nextLimit < 1) return;
+    setLocalDietLimit(nextLimit);
+    setLimitUpdating(true);
+    try {
+      await updateMember(member.id, { dietGenerationDailyLimit: nextLimit }, true);
+      showAlert('Success', `Daily generation limit updated to ${nextLimit} successfully.`, [{ text: 'OK' }], 'success');
+    } catch (err) {
+      setLocalDietLimit(member?.dietGenerationDailyLimit ?? 3);
+      showAlert('Error', err.message || 'Failed to update daily limit', [{ text: 'OK' }], 'error');
+    } finally {
+      setLimitUpdating(false);
+    }
+  };
 
   const handleShowPassword = async () => {
     setCredLoading(true);
@@ -53,7 +168,7 @@ export default function MemberDetailScreen({ route, navigation }) {
                 showAlert('Error', 'Member has no phone number registered.', [{ text: 'OK' }], 'error');
                 return;
               }
-              const message = `🏋️‍♂️ *GYM PORTAL CREDENTIALS* 🏋️‍♂️\n\n*Dear ${member.name},*\n\nHere are your login credentials for the Gym Member Portal:\n\n👤 *Login ID:* ${res.loginId}\n🔑 *Password:* ${res.password}\n\nKeep grinding! 💪💯`;
+              const message = `Dear ${member.name},\n\nHere are your login credentials for the Gym Member Portal:\n\n👤 *Login ID:* ${res.loginId}\n🔑 *Password:* ${res.password}\n\nKeep grinding! 💪💯`;
               try {
                 await Linking.openURL(`https://wa.me/+91${member.phone}?text=${encodeURIComponent(message)}`);
               } catch (err) {
@@ -70,8 +185,6 @@ export default function MemberDetailScreen({ route, navigation }) {
       setCredLoading(false);
     }
   };
-
-  const member = members.find((m) => m.id === memberId) || deletedMembers.find((m) => m.id === memberId);
 
   const selectedPlan = useMemo(() => {
     if (!member?.planId) return null;
@@ -277,7 +390,7 @@ export default function MemberDetailScreen({ route, navigation }) {
             }
 
             const invoiceUrl = api.getInvoiceUrl(payment.id || payment._id);
-            const message = `🏋️‍♂️ *GYM PRO RECEIPT* 🏋️‍♂️\n\n*Dear ${member.name},*\n\nThank you for your payment! Here are your transaction details:\n\n💰 *Amount Paid:* Rs ${Number(payment.amount).toLocaleString()}\n📅 *Date:* ${formatDate(payment.paidOn || payment.createdAt)}\n💳 *Payment Method:* ${(payment.paymentMethod || 'cash').toUpperCase()}\n\n📄 *Download Invoice PDF:* ${invoiceUrl}\n\nKeep grinding! 💪💯`;
+            const message = `Dear ${member.name},\n\nThank you for your payment! Here are your transaction details:\n\n💰 *Amount Paid:* Rs ${Number(payment.amount).toLocaleString()}\n📅 *Date:* ${formatDate(payment.paidOn || payment.createdAt)}\n💳 *Payment Method:* ${(payment.paymentMethod || 'cash').toUpperCase()}\n\n📄 *Download Invoice PDF:* ${invoiceUrl}\n\nKeep grinding! 💪💯`;
 
             try {
               await Linking.openURL(`https://wa.me/+91${member.phone}?text=${encodeURIComponent(message)}`);
@@ -360,13 +473,10 @@ export default function MemberDetailScreen({ route, navigation }) {
     if (!member.phone) return;
 
     const posterMessage = isExpired
-      ? `🌟 ══════════════════ 🌟
-   *MEMBERSHIP EXPIRED*   
-🌟 ══════════════════ 🌟
+      ? `
+Dear ${member.name},
 
-🏋️‍♂️ *Dear ${member.name},*
-
-We noticed your gym membership expired on *${expiryDate}*.
+We noticed your gym membership expired on ${expiryDate}.
 
 💪 *Don't lose your momentum!* 
 It's time to get back on track and crush your fitness goals! 🚀
@@ -377,11 +487,8 @@ It's time to get back on track and crush your fitness goals! 🚀
 
 👉 *Reply to this message or visit the gym to renew!*
 Let's get back to work! 💯`
-      : `🌟 ══════════════════ 🌟
-   *RENEWAL REMINDER*     
-🌟 ══════════════════ 🌟
-
-🏋️‍♂️ *Dear ${member.name},*
+      : `
+Dear ${member.name},
 
 A quick reminder that your membership will expire on *${expiryDate}*.
 
@@ -409,6 +516,32 @@ Let's keep making gains! 💯`;
     StatusTextColor = colors.warning;
   }
 
+  const getGoalLabel = (g) => {
+    switch (g) {
+      case 'lose': return 'Lose Weight';
+      case 'gain': return 'Gain Weight';
+      case 'maintain': return 'Maintain Weight';
+      default: return g || '-';
+    }
+  };
+
+  const getDietStyleLabel = (s) => {
+    switch (s) {
+      case 'balanced': return 'Balanced';
+      case 'high_protein': return 'High Protein';
+      case 'high_carb': return 'High Carb';
+      case 'high_fat': return 'High Fat / Keto';
+      default: return s || '-';
+    }
+  };
+
+  const getDietTypeLabel = (t) => {
+    switch (t) {
+      case 'veg': return 'Vegetarian';
+      case 'non_veg': return 'Non-Vegetarian';
+      default: return t || '-';
+    }
+  };
 
   return (
     <ScrollView
@@ -429,9 +562,13 @@ Let's keep making gains! 💯`;
       )}
 
       <View style={styles.heroCard}>
-        {member.photo || member.imageUrl ? (
+        {(member.photo || member.imageUrl) && !imageError ? (
           <TouchableOpacity activeOpacity={0.9} onPress={() => setShowImagePreview(true)}>
-            <Image source={{ uri: member.photo || member.imageUrl }} style={styles.avatar} />
+            <Image 
+              source={{ uri: member.photo || member.imageUrl }} 
+              style={styles.avatar} 
+              onError={() => setImageError(true)}
+            />
           </TouchableOpacity>
         ) : (
           <View style={styles.avatarPlaceholder}>
@@ -439,9 +576,16 @@ Let's keep making gains! 💯`;
           </View>
         )}
         <Text style={styles.name}>{member.name}</Text>
-        <View style={styles.idPill}>
-          <Text style={styles.idPillLabel}>MEMBER ID</Text>
-          <Text style={styles.idPillValue}>#{(member._id).slice(-5).toUpperCase()}</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <View style={[styles.idPill, { marginBottom: 0, alignSelf: 'auto' }]}>
+            <Text style={styles.idPillLabel}>MEMBER ID</Text>
+            <Text style={styles.idPillValue}>#{(member._id).slice(-5).toUpperCase()}</Text>
+          </View>
+          {member.batch && (
+            <View style={[styles.batchIndicator, { alignSelf: 'auto', justifyContent: 'center' }]}>
+              <Text style={styles.batchIndicatorText}>{member.batch.toUpperCase()}</Text>
+            </View>
+          )}
         </View>
         <Text style={styles.joined}>Joined {memberSince}</Text>
 
@@ -480,6 +624,8 @@ Let's keep making gains! 💯`;
             <Text style={styles.contactTextWhatsApp}>WhatsApp</Text>
           </TouchableOpacity>
         </View>
+
+
 
 
 
@@ -570,16 +716,22 @@ Let's keep making gains! 💯`;
 
       <View style={styles.detailsCard}>
         <View style={styles.tabsRow}>
-          <TouchableOpacity onPress={() => setActiveTab('details')}>
+          <TouchableOpacity onPress={() => setActiveTab('details')} style={styles.tabButton}>
             <Text style={activeTab === 'details' ? styles.activeTab : styles.inactiveTab}>Details</Text>
+            <View style={[styles.tabUnderline, activeTab === 'details' ? styles.tabUnderlineActive : styles.tabUnderlineInactive]} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab('payments')}>
+          <TouchableOpacity onPress={() => setActiveTab('payments')} style={styles.tabButton}>
             <Text style={activeTab === 'payments' ? styles.activeTab : styles.inactiveTab}>Payments</Text>
+            <View style={[styles.tabUnderline, activeTab === 'payments' ? styles.tabUnderlineActive : styles.tabUnderlineInactive]} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setActiveTab('diet')} style={styles.tabButton}>
+            <Text style={activeTab === 'diet' ? styles.activeTab : styles.inactiveTab}>Diet Plan</Text>
+            <View style={[styles.tabUnderline, activeTab === 'diet' ? styles.tabUnderlineActive : styles.tabUnderlineInactive]} />
           </TouchableOpacity>
         </View>
-        <View style={[styles.activeUnderline, activeTab === 'payments' && styles.activeUnderlinePayments]} />
 
-        {activeTab === 'details' ? (
+        <Animated.View style={{ opacity: tabFadeAnim, transform: [{ translateY: tabSlideAnim }] }}>
+          {activeTab === 'details' ? (
           <>
             <View style={styles.fieldWrapAttractive}>
               <View style={styles.fieldIconWrap}>
@@ -608,6 +760,16 @@ Let's keep making gains! 💯`;
               <View style={styles.fieldContent}>
                 <Text style={styles.fieldLabelAttractive}>Gender</Text>
                 <Text style={styles.fieldValueAttractive}>{member.gender?.toUpperCase() || '-'}</Text>
+              </View>
+            </View>
+
+            <View style={styles.fieldWrapAttractive}>
+              <View style={styles.fieldIconWrap}>
+                <CalendarClock color={colors.accent} size={20} />
+              </View>
+              <View style={styles.fieldContent}>
+                <Text style={styles.fieldLabelAttractive}>Batch</Text>
+                <Text style={styles.fieldValueAttractive}>{member.batch ? (member.batch.charAt(0).toUpperCase() + member.batch.slice(1)) : '-'}</Text>
               </View>
             </View>
 
@@ -648,7 +810,7 @@ Let's keep making gains! 💯`;
               </View>
             </View>
           </>
-        ) : (
+        ) : activeTab === 'payments' ? (
           <View style={styles.historyWrap}>
             {paymentHistory.length === 0 ? (
               <Text style={styles.emptyHistory}>No payment history for this member yet.</Text>
@@ -668,7 +830,147 @@ Let's keep making gains! 💯`;
               ))
             )}
           </View>
+        ) : (
+          <View>
+            {!localDietAccess ? (
+              <View style={styles.dietAccessDisabledContainer}>
+                <Salad color={colors.textMuted} size={48} style={{ marginBottom: 12 }} />
+                <Text style={styles.dietAccessDisabledText}>Diet Access is currently disabled</Text>
+                <Text style={styles.dietAccessDisabledSub}>Enable access to view the member's diet plan details.</Text>
+                <View style={styles.centeredToggleRow}>
+                  <Text style={styles.toggleRowLabel}>Enable Access</Text>
+                  <Switch
+                    value={localDietAccess}
+                    onValueChange={handleToggleDietAccess}
+                    trackColor={{ false: colors.border, true: colors.accent }}
+                    thumbColor={Platform.OS === 'android' ? '#ffffff' : undefined}
+                    disabled={isSoftDeleted}
+                  />
+                </View>
+              </View>
+            ) : dietLoading ? (
+              <ActivityIndicator color={colors.accent} size="large" style={{ marginVertical: 40 }} />
+            ) : (
+              <View>
+                <View style={styles.dietContentHeader}>
+                  <Text style={styles.dietContentTitle}>Diet Summary</Text>
+                </View>
+
+                {/* Configuration Controls Card */}
+                <View style={styles.configControlsCard}>
+                  {/* Row 1: Diet Access */}
+                  <View style={styles.configItem}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={styles.configItemTitle}>Diet Access</Text>
+                      <Text style={styles.configItemDesc}>Allow member portal diet planning</Text>
+                    </View>
+                    <Switch
+                      value={localDietAccess}
+                      onValueChange={handleToggleDietAccess}
+                      trackColor={{ false: colors.border, true: colors.accent }}
+                      thumbColor={Platform.OS === 'android' ? '#ffffff' : undefined}
+                      disabled={isSoftDeleted}
+                    />
+                  </View>
+                       {/* Row 2: Daily Limit */}
+                  <View style={styles.configItem}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.configItemTitle}>Daily Limit</Text>
+                        {limitUpdating && (
+                          <ActivityIndicator size="small" color={colors.accent} style={{ marginLeft: 8 }} />
+                        )}
+                      </View>
+                      <Text style={styles.configItemDesc}>Maximum plan generations per day</Text>
+                    </View>
+                    <View style={styles.counterContainer}>
+                      <TouchableOpacity
+                        style={[styles.counterBtn, (localDietLimit <= 1 || limitUpdating) && styles.counterBtnDisabled]}
+                        onPress={handleDecrementLimit}
+                        disabled={localDietLimit <= 1 || isSoftDeleted || limitUpdating}
+                        activeOpacity={0.7}
+                      >
+                        <Minus size={14} color={(localDietLimit <= 1 || limitUpdating) ? colors.textMuted : colors.textPrimary} />
+                      </TouchableOpacity>
+                      <Text style={styles.counterValue}>{localDietLimit}</Text>
+                      <TouchableOpacity
+                        style={[styles.counterBtn, (localDietLimit >= 99 || limitUpdating) && styles.counterBtnDisabled]}
+                        onPress={handleIncrementLimit}
+                        disabled={localDietLimit >= 99 || isSoftDeleted || limitUpdating}
+                        activeOpacity={0.7}
+                      >
+                        <Plus size={14} color={(localDietLimit >= 99 || limitUpdating) ? colors.textMuted : colors.textPrimary} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+
+                {(memberDiet && memberDiet.totalCalories) ? (
+                  <View style={styles.dietPlanSummaryContainer}>
+                    {/* Calories Card */}
+                    <View style={styles.dietPlanItem}>
+                      <Text style={styles.dietPlanLabel}>Daily Target Calories</Text>
+                      <Text style={styles.dietPlanValue}>{memberDiet.totalCalories} kcal/day</Text>
+                    </View>
+
+                    {/* Macronutrients Grid */}
+                    <View style={styles.macroSummaryGrid}>
+                      <View style={[styles.macroSummaryBox, { borderColor: '#e74c3c' }]}>
+                        <Text style={[styles.macroSummaryVal, { color: '#e74c3c' }]}>{memberDiet.totalProtein}g</Text>
+                        <Text style={styles.macroSummaryLbl}>Protein</Text>
+                      </View>
+                      <View style={[styles.macroSummaryBox, { borderColor: '#f39c12' }]}>
+                        <Text style={[styles.macroSummaryVal, { color: '#f39c12' }]}>{memberDiet.totalCarb}g</Text>
+                        <Text style={styles.macroSummaryLbl}>Carbs</Text>
+                      </View>
+                      <View style={[styles.macroSummaryBox, { borderColor: '#3498db' }]}>
+                        <Text style={[styles.macroSummaryVal, { color: '#3498db' }]}>{memberDiet.totalFat}g</Text>
+                        <Text style={styles.macroSummaryLbl}>Fats</Text>
+                      </View>
+                    </View>
+
+                    {/* Additional Info fields */}
+                    <View style={styles.fieldWrapAttractive}>
+                      <View style={styles.fieldIconWrap}>
+                        <Activity color={colors.accent} size={20} />
+                      </View>
+                      <View style={styles.fieldContent}>
+                        <Text style={styles.fieldLabelAttractive}>Fitness Goal</Text>
+                        <Text style={styles.fieldValueAttractive}>{getGoalLabel(memberDiet.goal)}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.fieldWrapAttractive}>
+                      <View style={styles.fieldIconWrap}>
+                        <ChefHat color={colors.accent} size={20} />
+                      </View>
+                      <View style={styles.fieldContent}>
+                        <Text style={styles.fieldLabelAttractive}>Diet Style</Text>
+                        <Text style={styles.fieldValueAttractive}>{getDietStyleLabel(memberDiet.dietStyle)}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.fieldWrapAttractive}>
+                      <View style={styles.fieldIconWrap}>
+                        <Salad color={colors.accent} size={20} />
+                      </View>
+                      <View style={styles.fieldContent}>
+                        <Text style={styles.fieldLabelAttractive}>Diet Type</Text>
+                        <Text style={styles.fieldValueAttractive}>{getDietTypeLabel(memberDiet.dietType)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.noDietPlanContainer}>
+                    <AlertCircle color={colors.textMuted} size={40} style={{ marginBottom: 10 }} />
+                    <Text style={styles.noDietPlanText}>member has not generated diet plan</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
         )}
+        </Animated.View>
       </View>
 
       <View style={styles.bottomActions}>
@@ -727,6 +1029,8 @@ Let's keep making gains! 💯`;
           </Animated.View>
         </View>
       )}
+
+
     </ScrollView>
   );
 }
@@ -804,6 +1108,21 @@ const getStyles = (colors) =>
       fontSize: 20,
       fontWeight: '800',
       textAlign: 'center',
+    },
+    batchIndicator: {
+      backgroundColor: `${colors.accent}12`,
+      borderColor: `${colors.accent}35`,
+      borderWidth: 1,
+      borderRadius: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+    },
+    batchIndicatorText: {
+      color: colors.accent,
+      fontSize: 14,
+      fontWeight: '800',
+      textAlign: 'center',
+      letterSpacing: 0.5,
     },
     joined: {
       color: colors.textMuted,
@@ -983,10 +1302,15 @@ const getStyles = (colors) =>
       padding: 18,
       marginBottom: spacing.md,
     },
+    tabsHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
     tabsRow: {
       flexDirection: 'row',
       gap: 24,
-      marginBottom: 7,
     },
     activeTab: {
       color: colors.textPrimary,
@@ -998,15 +1322,22 @@ const getStyles = (colors) =>
       fontWeight: '600',
       fontSize: 14,
     },
-    activeUnderline: {
-      width: 60,
+    tabButton: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingBottom: 6,
+    },
+    tabUnderline: {
       height: 3,
       borderRadius: 3,
-      backgroundColor: colors.textPrimary,
-      marginBottom: 12,
+      marginTop: 4,
+      alignSelf: 'stretch',
     },
-    activeUnderlinePayments: {
-      marginLeft: 70,
+    tabUnderlineActive: {
+      backgroundColor: colors.textPrimary,
+    },
+    tabUnderlineInactive: {
+      backgroundColor: 'transparent',
     },
     fieldWrapAttractive: {
       flexDirection: 'row',
@@ -1163,5 +1494,169 @@ const getStyles = (colors) =>
       fontSize: 13,
       fontWeight: '600',
       color: colors.danger,
+    },
+    dietContentHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    dietContentTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    configControlsCard: {
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 20,
+      padding: 16,
+      marginBottom: 16,
+    },
+    configItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    configItemTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    configItemDesc: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    configDivider: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginVertical: 12,
+    },
+    counterContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 4,
+    },
+    counterBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: colors.surfaceAlt,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    counterBtnDisabled: {
+      opacity: 0.5,
+    },
+    counterValue: {
+      width: 36,
+      textAlign: 'center',
+      fontSize: 15,
+      fontWeight: '800',
+      color: colors.textPrimary,
+    },
+    dietAccessDisabledContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 32,
+      paddingHorizontal: 16,
+    },
+    dietAccessDisabledText: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginTop: 12,
+      textAlign: 'center',
+    },
+    dietAccessDisabledSub: {
+      fontSize: 13,
+      color: colors.textMuted,
+      marginTop: 4,
+      marginBottom: 20,
+      textAlign: 'center',
+    },
+    centeredToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+    },
+    toggleRowLabel: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    dietPlanSummaryContainer: {
+      paddingVertical: 4,
+    },
+    dietPlanItem: {
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 12,
+      alignItems: 'center',
+    },
+    dietPlanLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 2,
+    },
+    dietPlanValue: {
+      fontSize: 22,
+      fontWeight: '800',
+      color: colors.textPrimary,
+    },
+    macroSummaryGrid: {
+      flexDirection: 'row',
+      gap: 10,
+      marginBottom: 12,
+    },
+    macroSummaryBox: {
+      flex: 1,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderRadius: 14,
+      padding: 10,
+      alignItems: 'center',
+    },
+    macroSummaryVal: {
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    macroSummaryLbl: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      textTransform: 'uppercase',
+      marginTop: 2,
+    },
+    noDietPlanContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 40,
+    },
+    noDietPlanText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.textMuted,
+      textAlign: 'center',
     },
   });

@@ -378,186 +378,182 @@ export default function PaymentsScreen() {
 
   return (
     <View style={styles.root}>
-      <ScrollView
-        style={styles.container}
-        showsVerticalScrollIndicator={false}
-        showsHorizontalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.accent} />}
-        contentContainerStyle={{ paddingBottom: 100 }}
-      >
-        {/* <View style={styles.headerRow}>
-          <Text style={styles.pageTitle}>Payments</Text>
-        </View> */}
-
-        <Text style={styles.sectionTitle}>Revenue Summary</Text>
-        <View style={styles.filterRow}>
-          {[
-            { value: 'all', label: 'All' },
-            { value: 'cash', label: 'Cash' },
-            { value: 'upi', label: 'UPI' },
-          ].map((opt, idx) => ( 
-            <TouchableOpacity
-              key={opt.value}
+      <FlatList
+        data={filteredPayments.length === 0 ? [] : paginatedPayments}
+        keyExtractor={(p, idx) => p.id || p._id || String(idx)}
+        renderItem={({ item, index }) => {
+          const p = item;
+          const isExpanded = expandedPaymentId === (p.id || p._id);
+          const memberObj = p.memberId || {};
+          const memberId = memberObj._id || memberObj.id;
+          
+          return (
+            <TouchableOpacity 
               style={[
-                styles.filterChip,
-                idx !== 2 && styles.filterChipSpacing,
-                methodFilter === opt.value && styles.filterChipActive,
+                styles.paymentCard,
+                isExpanded && styles.expandedItem
               ]}
-              onPress={() => setMethodFilter(opt.value)}
+              onPress={() => setExpandedPaymentId(isExpanded ? null : (p.id || p._id))}
+              activeOpacity={0.7}
             >
-              <Text style={[styles.filterChipText, methodFilter === opt.value && styles.filterChipTextActive]}>
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={styles.metricsRow}>
-          <MetricCard title="Today" value={formatAmount(summary.today)} color={colors.secondary} />
-          <MetricCard title="This Week" value={formatAmount(summary.week)} color={colors.primary } />
-        </View>
-        <View style={styles.metricsRow}>
-          <MetricCard title="This Month" value={formatAmount(summary.month)} color={colors.primary} />
-          <MetricCard title="This Year" value={formatAmount(summary.year)} color={colors.warning} />
-        </View>
-        <View style={styles.metricsRow}>
-          <TouchableOpacity style={{ flex: 1, flexDirection: 'row' }} activeOpacity={0.8} onPress={() => setShowCustomRevenueModal(true)}>
-            <MetricCard 
-              title={customRangeTitle} 
-              value={formatAmount(summary.customRange)} 
-              color={colors.success} 
-              icon={<Calendar size={18} color={colors.success} />}
-            />
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Revenue by Plan ─────────────────────────────────────────── */}
-        <View style={[styles.headerRow, { marginTop: spacing.lg, marginBottom: spacing.sm }]}>
-          <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Revenue by Plan</Text>
-        </View>
-        <View style={styles.filterRow}>
-          {[
-            { value: 'today', label: 'Today' },
-            { value: 'week', label: 'This Week' },
-            { value: 'month', label: 'This Month' },
-          ].map((opt, idx) => (
-            <TouchableOpacity
-              key={opt.value}
-              style={[
-                styles.filterChip,
-                idx !== 2 && styles.filterChipSpacing,
-                planRevenueFilter === opt.value && styles.filterChipActive,
-              ]}
-              onPress={() => setPlanRevenueFilter(opt.value)}
-            >
-              <Text style={[styles.filterChipText, planRevenueFilter === opt.value && styles.filterChipTextActive]}>
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={styles.card}>
-          {localRevenueByPlan.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No transactions recorded for{' '}
-              {planRevenueFilter === 'today' ? 'today' : planRevenueFilter === 'week' ? 'this week' : 'this month'}.
-            </Text>
-          ) : (
-            localRevenueByPlan.map((item, index) => (
-              <View key={index} style={styles.listItem}>
-                <Text style={styles.listLabel}>{item.name}</Text>
-                <Text style={styles.listValue}>{formatAmount(item.amount)}</Text>
-              </View>
-            ))
-          )}
-        </View>
-
-
-        <View style={[styles.headerRow, { marginTop: spacing.lg, marginBottom: spacing.sm }]}>
-          <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Recent Payments</Text>
-          <TouchableOpacity style={styles.filterBtn} onPress={() => setShowDateFilterModal(true)}>
-            <Filter size={14} color={colors.accent} style={{ marginRight: 6 }} />
-            <Text style={styles.filterBtnText}>
-              {dateFilter === 'all' ? 'All Time' : 
-               dateFilter === 'custom' ? formatDate(customDate) : 
-               dateFilter === 'week' ? 'This Week' : 
-               dateFilter === 'month' ? 'This Month' : 
-               dateFilter === 'year' ? 'This Year' : 'Today'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.card}>
-          {filteredPayments.length === 0 ? (
-            <Text style={styles.emptyText}>No payments found.</Text>
-          ) : (
-            <>
-              {paginatedPayments.map((p, idx) => {
-                const isExpanded = expandedPaymentId === (p.id || p._id);
-                const memberObj = p.memberId || {};
-                const memberId = memberObj._id || memberObj.id;
+              <View style={{ width: '100%' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.payeeName}>{memberObj.name || 'Deleted Member'}</Text>
+                    <Text style={styles.payMeta}>{p.paymentMethod?.toUpperCase()} - {formatDate(p.paidOn || p.createdAt)}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', flexDirection: 'row' }}>
+                    <Text style={styles.payAmount}>{formatAmount(p.amount)}</Text>
+                    {isExpanded ? <ChevronUp size={20} color={colors.textMuted} style={{ marginLeft: 8 }} /> : <ChevronDown size={20} color={colors.textMuted} style={{ marginLeft: 8 }} />}
+                  </View>
+                </View>
                 
-                return (
-                  <TouchableOpacity 
-                    key={p.id || p._id || idx} 
-                    style={[styles.listItem, idx === paginatedPayments.length - 1 && !isExpanded && { borderBottomWidth: 0 }, isExpanded && styles.expandedItem]}
-                    onPress={() => setExpandedPaymentId(isExpanded ? null : (p.id || p._id))}
-                    activeOpacity={0.7}
-                  >
-                    <View style={{ width: '100%' }}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.payeeName}>{memberObj.name || 'Deleted Member'}</Text>
-                          <Text style={styles.payMeta}>{p.paymentMethod?.toUpperCase()} - {formatDate(p.paidOn || p.createdAt)}</Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end', flexDirection: 'row' }}>
-                          <Text style={styles.payAmount}>{formatAmount(p.amount)}</Text>
-                          {isExpanded ? <ChevronUp size={20} color={colors.textMuted} style={{ marginLeft: 8 }} /> : <ChevronDown size={20} color={colors.textMuted} style={{ marginLeft: 8 }} />}
-                        </View>
+                {p.notes && !isExpanded ? <Text style={styles.payNotes} numberOfLines={1}>{p.notes}</Text> : null}
+                
+                {isExpanded && (
+                  <View style={styles.expandedContent}>
+                    {p.notes ? (
+                      <View style={styles.expandedRow}>
+                        <Text style={styles.expandedLabel}>Notes:</Text>
+                        <Text style={styles.expandedValue}>{p.notes}</Text>
                       </View>
-                      
-                      {p.notes && !isExpanded ? <Text style={styles.payNotes} numberOfLines={1}>{p.notes}</Text> : null}
-                      
-                      {isExpanded && (
-                        <View style={styles.expandedContent}>
-                          {p.notes ? (
-                            <View style={styles.expandedRow}>
-                              <Text style={styles.expandedLabel}>Notes:</Text>
-                              <Text style={styles.expandedValue}>{p.notes}</Text>
-                            </View>
-                          ) : null}
-                          
-                          <View style={{ flexDirection: 'row', marginTop: spacing.xs }}>
-                            {memberId && (
-                              <TouchableOpacity 
-                                style={[styles.viewProfileBtn, { marginTop: 0 }]}
-                                onPress={() => navigation.navigate('MemberDetail', { memberId })}
-                              >
-                                <User size={16} color={colors.primary} />
-                                <Text style={styles.viewProfileText}>View Profile</Text>
-                              </TouchableOpacity>
-                            )}
-
-                            <TouchableOpacity
-                              style={[styles.deletePaymentBtn, { marginTop: 0 }]}
-                              onPress={() => handleDeletePayment(p.id || p._id)}
-                            >
-                              <Trash2 size={16} color={colors.danger} />
-                              <Text style={styles.deletePaymentText}>Delete</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
+                    ) : null}
+                    
+                    <View style={{ flexDirection: 'row', marginTop: spacing.xs }}>
+                      {memberId && (
+                        <TouchableOpacity 
+                          style={[styles.viewProfileBtn, { marginTop: 0 }]}
+                          onPress={() => navigation.navigate('MemberDetail', { memberId })}
+                        >
+                          <User size={16} color={colors.primary} />
+                          <Text style={styles.viewProfileText}>View Profile</Text>
+                        </TouchableOpacity>
                       )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-              
-              {renderPaginationFooter()}
-            </>
-          )}
-        </View>
-      </ScrollView>
 
+                      <TouchableOpacity
+                        style={[styles.deletePaymentBtn, { marginTop: 0 }]}
+                        onPress={() => handleDeletePayment(p.id || p._id)}
+                      >
+                        <Trash2 size={16} color={colors.danger} />
+                        <Text style={styles.deletePaymentText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+        ListHeaderComponent={
+          <View style={{ paddingBottom: spacing.sm }}>
+            <View style={styles.headerRow}>
+              <Text style={styles.pageTitle}>Payment Details</Text>
+            </View>
+
+            <Text style={styles.sectionTitle}>Revenue Summary</Text>
+            <View style={styles.filterRow}>
+              {[
+                { value: 'all', label: 'All' },
+                { value: 'cash', label: 'Cash' },
+                { value: 'upi', label: 'UPI' },
+              ].map((opt, idx) => ( 
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[
+                    styles.filterChip,
+                    idx !== 2 && styles.filterChipSpacing,
+                    methodFilter === opt.value && styles.filterChipActive,
+                  ]}
+                  onPress={() => setMethodFilter(opt.value)}
+                >
+                  <Text style={[styles.filterChipText, methodFilter === opt.value && styles.filterChipTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.metricsRow}>
+              <MetricCard title="Today" value={formatAmount(summary.today)} color={colors.secondary} />
+              <MetricCard title="This Week" value={formatAmount(summary.week)} color={colors.primary } />
+            </View>
+            <View style={styles.metricsRow}>
+              <MetricCard title="This Month" value={formatAmount(summary.month)} color={colors.primary} />
+              <MetricCard title="This Year" value={formatAmount(summary.year)} color={colors.warning} />
+            </View>
+            <View style={styles.metricsRow}>
+              <TouchableOpacity style={{ flex: 1, flexDirection: 'row' }} activeOpacity={0.8} onPress={() => setShowCustomRevenueModal(true)}>
+                <MetricCard 
+                  title={customRangeTitle} 
+                  value={formatAmount(summary.customRange)} 
+                  color={colors.success} 
+                  icon={<Calendar size={18} color={colors.success} />}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Revenue by Plan ─────────────────────────────────────────── */}
+            <View style={[styles.headerRow, { marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Revenue by Plan</Text>
+            </View>
+            <View style={styles.filterRow}>
+              {[
+                { value: 'today', label: 'Today' },
+                { value: 'week', label: 'This Week' },
+                { value: 'month', label: 'This Month' },
+              ].map((opt, idx) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[
+                    styles.filterChip,
+                    idx !== 2 && styles.filterChipSpacing,
+                    planRevenueFilter === opt.value && styles.filterChipActive,
+                  ]}
+                  onPress={() => setPlanRevenueFilter(opt.value)}
+                >
+                  <Text style={[styles.filterChipText, planRevenueFilter === opt.value && styles.filterChipTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.card}>
+              {localRevenueByPlan.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  No transactions recorded for{' '}
+                  {planRevenueFilter === 'today' ? 'today' : planRevenueFilter === 'week' ? 'this week' : 'this month'}.
+                </Text>
+              ) : (
+                localRevenueByPlan.map((item, index) => (
+                  <View key={index} style={styles.listItem}>
+                    <Text style={styles.listLabel}>{item.name}</Text>
+                    <Text style={styles.listValue}>{formatAmount(item.amount)}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+
+            <View style={[styles.headerRow, { marginTop: spacing.lg, marginBottom: spacing.sm }]}>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Recent Payments</Text>
+              <TouchableOpacity style={styles.filterBtn} onPress={() => setShowDateFilterModal(true)}>
+                <Filter size={14} color={colors.accent} style={{ marginRight: 6 }} />
+                <Text style={styles.filterBtnText}>
+                  {dateFilter === 'all' ? 'All Time' : 
+                   dateFilter === 'custom' ? formatDate(customDate) : 
+                   dateFilter === 'week' ? 'This Week' : 
+                   dateFilter === 'month' ? 'This Month' : 
+                   dateFilter === 'year' ? 'This Year' : 'Today'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        }
+        ListFooterComponent={renderPaginationFooter}
+        ListEmptyComponent={<Text style={[styles.emptyText, { textAlign: 'center', marginVertical: 20 }]}>No payments found.</Text>}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.accent} />}
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+      />
 
       <Modal visible={showDateFilterModal} transparent animationType="fade" onRequestClose={() => setShowDateFilterModal(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowDateFilterModal(false)}>
@@ -687,9 +683,10 @@ const getStyles = (colors) => StyleSheet.create({
     marginBottom: spacing.md,
   },
   pageTitle: {
-    ...typography.heading,
-    fontSize: 22,
+   fontSize: 22,
+    fontWeight: '800',
     color: colors.textPrimary,
+    marginBottom: spacing.md,
   },
   recordBtn: {
     backgroundColor: colors.accent,
@@ -743,6 +740,19 @@ const getStyles = (colors) => StyleSheet.create({
     borderRadius: radius.card,
     padding: spacing.md,
     marginBottom: spacing.xl,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  paymentCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,

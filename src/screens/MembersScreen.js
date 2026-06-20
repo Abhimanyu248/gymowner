@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import {
   View, TextInput, StyleSheet, FlatList, TouchableOpacity,
   Text, Modal, Animated, Pressable,
-  ScrollView, Platform, PanResponder,
+  ScrollView, Platform, PanResponder, 
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -98,6 +98,7 @@ function SortFilterSheet({
   filterStartDate, setFilterStartDate,
   filterEndDate, setFilterEndDate,
   filterExpiryDays, setFilterExpiryDays,
+  filterBatch, setFilterBatch,
   colors, insets
 }) {
   // Single translateY drives everything: open spring, drag tracking, close animation
@@ -110,6 +111,7 @@ function SortFilterSheet({
   const [localStartDate, setLocalStartDate] = useState(filterStartDate ? new Date(filterStartDate) : null);
   const [localEndDate, setLocalEndDate] = useState(filterEndDate ? new Date(filterEndDate) : null);
   const [localExpiryDays, setLocalExpiryDays] = useState(filterExpiryDays || '');
+  const [localBatch, setLocalBatch] = useState(filterBatch || null);
   const [showPicker, setShowPicker] = useState(null);
 
   // Open animation — runs whenever visible flips to true
@@ -119,6 +121,7 @@ function SortFilterSheet({
       setLocalStartDate(filterStartDate ? new Date(filterStartDate) : null);
       setLocalEndDate(filterEndDate ? new Date(filterEndDate) : null);
       setLocalExpiryDays(filterExpiryDays || '');
+      setLocalBatch(filterBatch || null);
       translateY.setValue(700);
       backdropAnim.setValue(0);
       Animated.parallel([
@@ -199,6 +202,7 @@ function SortFilterSheet({
     setFilterStartDate(formatDateISO(localStartDate));
     setFilterEndDate(formatDateISO(localEndDate));
     setFilterExpiryDays(localExpiryDays);
+    setFilterBatch(localBatch);
     dismiss();
   }
 
@@ -208,9 +212,10 @@ function SortFilterSheet({
     setLocalStartDate(null);
     setLocalEndDate(null);
     setLocalExpiryDays('');
+    setLocalBatch(null);
   }
 
-  const hasActive = localSort || localStartDate || localEndDate || localExpiryDays;
+  const hasActive = localSort || localStartDate || localEndDate || localExpiryDays || localBatch;
   const s = sheetStyles(colors, insets);
 
   return (
@@ -348,6 +353,25 @@ function SortFilterSheet({
               </TouchableOpacity>
             )}
           </View>
+
+          <Text style={[s.sectionLabel, { marginTop: 20 }]}>FILTER BY BATCH</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {['morning', 'evening'].map((b) => {
+              const active = localBatch === b;
+              return (
+                <TouchableOpacity
+                  key={b}
+                  style={[s.filterChip, active && s.filterChipActive, { flex: 1 }]}
+                  onPress={() => setLocalBatch(active ? null : b)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[s.filterChipText, active && s.filterChipTextActive]}>
+                    {b.charAt(0).toUpperCase() + b.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </ScrollView>
 
         <View style={s.applyWrap}>
@@ -374,6 +398,7 @@ export default function MembersScreen({ navigation }) {
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterExpiryDays, setFilterExpiryDays] = useState('');
+  const [filterBatch, setFilterBatch] = useState(null);
 
   // Pagination states
   const [isPaginated, setIsPaginated] = useState(true);
@@ -382,38 +407,26 @@ export default function MembersScreen({ navigation }) {
   // Automatically reset to page 1 when any filter, search, or sort option changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filter, filterStartDate, filterEndDate, filterExpiryDays, sortKey]);
+  }, [searchQuery, filter, filterStartDate, filterEndDate, filterExpiryDays, filterBatch, sortKey]);
 
   const hasActiveSort = !!sortKey;
-  const hasActiveFilter = !!filterStartDate || !!filterEndDate || !!filterExpiryDays;
+  const hasActiveFilter = !!filterStartDate || !!filterEndDate || !!filterExpiryDays || !!filterBatch;
   const badgeCount = (hasActiveSort ? 1 : 0) + (hasActiveFilter ? 1 : 0);
 
   // Memoized filtered + sorted list — only recomputes when data/search/filter/sort changes
   // NOT when sheetVisible toggles, preventing FlatList re-renders on modal close
-  const result = useMemo(() => {
-    // Choose source list based on active filter
-    const sourceList = filter === 'Deleted' ? deletedMembers : members;
-
-    // 1️⃣ Status + search filter
-    let filtered = sourceList.filter(member => {
+  // 1️⃣ Memoized base filtered lists (with search, date, and expiry days filter applied)
+  const filteredActive = useMemo(() => {
+    return members.filter(member => {
+      // Search filter
       const matchSearch =
         member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (member.phone != null && String(member.phone).includes(searchQuery));
       if (!matchSearch) return false;
 
-      const daysLeft = calculateDaysLeft(member.expiryDate);
-      const isExpired = daysLeft !== null && daysLeft < 0;
-      const isExpireSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 4;
-      if (filter === 'Active' && isExpired) return false;
-      if (filter === 'Expired' && !isExpired) return false;
-      if (filter === 'Expire Soon' && !isExpireSoon) return false;
-      return true;
-    });
-
-    // 2️⃣ Date filter
-    if (filterStartDate || filterEndDate) {
-      filtered = filtered.filter(m => {
-        const jd = m.joinDate || m.joiningDate;
+      // Date filter
+      if (filterStartDate || filterEndDate) {
+        const jd = member.joinDate || member.joiningDate;
         if (!jd) return false;
         const parsedDate = parseLocalDate(jd);
         if (!parsedDate) return false;
@@ -421,24 +434,135 @@ export default function MembersScreen({ navigation }) {
         const dTime = parsedDate.getTime();
         const start = filterStartDate ? parseLocalDate(filterStartDate).getTime() : 0;
         let end = filterEndDate ? parseLocalDate(filterEndDate).getTime() : Infinity;
-        if (filterEndDate) end += 24 * 60 * 60 * 1000 - 1; // End of the day
+        if (filterEndDate) {
+          end += 24 * 60 * 60 * 1000 - 1; // End of the day
+        } else if (filterStartDate) {
+          end = start + 24 * 60 * 60 * 1000 - 1; // If no end date is selected, show result for start selected date
+        }
         
-        return dTime >= start && dTime <= end;
+        if (dTime < start || dTime > end) return false;
+      }
+
+      // Expiry days left filter
+      if (filterExpiryDays !== '' && filterExpiryDays !== null && filterExpiryDays !== undefined) {
+        const maxDays = parseInt(filterExpiryDays, 10);
+        if (!isNaN(maxDays)) {
+          const daysLeft = calculateDaysLeft(member.expiryDate);
+          if (daysLeft === null || daysLeft < 0 || daysLeft > maxDays) return false;
+        }
+      }
+
+      // Batch filter
+      if (filterBatch) {
+        if (!member.batch || member.batch.toLowerCase() !== filterBatch.toLowerCase()) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [members, searchQuery, filterStartDate, filterEndDate, filterExpiryDays, filterBatch]);
+
+  const filteredDeleted = useMemo(() => {
+    return deletedMembers.filter(member => {
+      // Search filter
+      const matchSearch =
+        member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (member.phone != null && String(member.phone).includes(searchQuery));
+      if (!matchSearch) return false;
+
+      // Date filter
+      if (filterStartDate || filterEndDate) {
+        const jd = member.joinDate || member.joiningDate;
+        if (!jd) return false;
+        const parsedDate = parseLocalDate(jd);
+        if (!parsedDate) return false;
+        
+        const dTime = parsedDate.getTime();
+        const start = filterStartDate ? parseLocalDate(filterStartDate).getTime() : 0;
+        let end = filterEndDate ? parseLocalDate(filterEndDate).getTime() : Infinity;
+        if (filterEndDate) {
+          end += 24 * 60 * 60 * 1000 - 1; // End of the day
+        } else if (filterStartDate) {
+          end = start + 24 * 60 * 60 * 1000 - 1; // If no end date is selected, show result for start selected date
+        }
+        
+        if (dTime < start || dTime > end) return false;
+      }
+
+      // Expiry days left filter
+      if (filterExpiryDays !== '' && filterExpiryDays !== null && filterExpiryDays !== undefined) {
+        const maxDays = parseInt(filterExpiryDays, 10);
+        if (!isNaN(maxDays)) {
+          const daysLeft = calculateDaysLeft(member.expiryDate);
+          if (daysLeft === null || daysLeft < 0 || daysLeft > maxDays) return false;
+        }
+      }
+
+      // Batch filter
+      if (filterBatch) {
+        if (!member.batch || member.batch.toLowerCase() !== filterBatch.toLowerCase()) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [deletedMembers, searchQuery, filterStartDate, filterEndDate, filterExpiryDays, filterBatch]);
+
+  // 2️⃣ Memoized counts matching the current search & filter criteria
+  const counts = useMemo(() => {
+    let active = 0;
+    let expired = 0;
+    let expireSoon = 0;
+
+    filteredActive.forEach(m => {
+      const daysLeft = calculateDaysLeft(m.expiryDate);
+      if (daysLeft !== null) {
+        if (daysLeft < 0) {
+          expired++;
+        } 
+        else if (daysLeft <= 4) {
+            expireSoon++;
+          }
+        else {
+          active++;
+          }
+      }
+    });
+
+    return {
+      All: filteredActive.length,
+      Active: active,
+      Expired: expired,
+      'Expire Soon': expireSoon,
+      Deleted: filteredDeleted.length,
+    };
+  }, [filteredActive, filteredDeleted]);
+
+  // 3️⃣ Memoized final result list (filtered by status and sorted)
+  const result = useMemo(() => {
+    let filtered = filter === 'Deleted' ? filteredDeleted : filteredActive;
+
+    // Apply status filter based on active tab
+    if (filter === 'Active') {
+      filtered = filtered.filter(m => {
+        const daysLeft = calculateDaysLeft(m.expiryDate);
+        return daysLeft !== null && daysLeft >= 0;
+      });
+    } else if (filter === 'Expired') {
+      filtered = filtered.filter(m => {
+        const daysLeft = calculateDaysLeft(m.expiryDate);
+        return daysLeft !== null && daysLeft < 0;
+      });
+    } else if (filter === 'Expire Soon') {
+      filtered = filtered.filter(m => {
+        const daysLeft = calculateDaysLeft(m.expiryDate);
+        return daysLeft !== null && daysLeft >= 0 && daysLeft <= 4;
       });
     }
 
-    // 2️⃣.5️⃣ Expiry days left filter
-    if (filterExpiryDays !== '' && filterExpiryDays !== null && filterExpiryDays !== undefined) {
-      const maxDays = parseInt(filterExpiryDays, 10);
-      if (!isNaN(maxDays)) {
-        filtered = filtered.filter(m => {
-          const daysLeft = calculateDaysLeft(m.expiryDate);
-          return daysLeft !== null && daysLeft >= 0 && daysLeft <= maxDays;
-        });
-      }
-    }
-
-    // 3️⃣ Sort
+    // Sort
     if (sortKey) {
       filtered = [...filtered].sort((a, b) => {
         if (sortKey === 'nameAsc' || sortKey === 'nameDesc') {
@@ -468,7 +592,7 @@ export default function MembersScreen({ navigation }) {
     }
 
     return filtered;
-  }, [members, deletedMembers, searchQuery, filter, filterStartDate, filterEndDate, filterExpiryDays, sortKey]);
+  }, [filteredActive, filteredDeleted, filter, sortKey]);
 
   const totalPages = isPaginated ? Math.ceil(result.length / 10) : 1;
   const activePage = Math.min(Math.max(currentPage, 1), totalPages || 1);
@@ -479,15 +603,6 @@ export default function MembersScreen({ navigation }) {
     const startIndex = (activePage - 1) * 10;
     return result.slice(startIndex, startIndex + 10);
   }, [result, isPaginated, activePage]);
-
-  // Memoized counts — only recalculates when members list changes
-  const counts = useMemo(() => ({
-    All: members.length,
-    Active: members.filter(m => { const d = calculateDaysLeft(m.expiryDate); return d !== null && d >= 0; }).length,
-    Expired: members.filter(m => { const d = calculateDaysLeft(m.expiryDate); return d !== null && d < 0; }).length,
-    'Expire Soon': members.filter(m => { const d = calculateDaysLeft(m.expiryDate); return d !== null && d >= 0 && d <= 4; }).length,
-    Deleted: deletedMembers.length,
-  }), [members, deletedMembers]);
 
   // Stable renderItem — won't cause FlatList to re-render items when sheetVisible toggles
   const renderItem = useCallback(({ item }) => (
@@ -605,6 +720,7 @@ export default function MembersScreen({ navigation }) {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
+        <Text style={styles.screenHeading}>Member Details</Text>
         {/* Search row */}
         <View style={styles.searchRow}>
           <View style={styles.searchWrap}>
@@ -616,6 +732,15 @@ export default function MembersScreen({ navigation }) {
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                style={styles.clearSearchBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <X size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Sort/Filter button */}
@@ -649,7 +774,7 @@ export default function MembersScreen({ navigation }) {
         </ScrollView>
 
         {/* Active sort/filter summary */}
-        {(sortKey || filterStartDate || filterEndDate || filterExpiryDays) && (
+        {(sortKey || filterStartDate || filterEndDate || filterExpiryDays || filterBatch) && (
           <View style={styles.activeSummary}>
             {sortKey && (
               <View style={styles.activePill}>
@@ -664,7 +789,7 @@ export default function MembersScreen({ navigation }) {
             {(filterStartDate || filterEndDate) && (
               <View style={styles.activePill}>
                 <Text style={styles.activePillText}>
-                  {filterStartDate === filterEndDate && filterStartDate 
+                  {filterStartDate && (!filterEndDate || filterStartDate === filterEndDate)
                     ? `Joined ${formatDisplayDate(filterStartDate)}` 
                     : `Joined ${filterStartDate ? formatDisplayDate(filterStartDate) : '...'} - ${filterEndDate ? formatDisplayDate(filterEndDate) : '...'}`}
                 </Text>
@@ -679,6 +804,16 @@ export default function MembersScreen({ navigation }) {
                   Expires in ≤ {filterExpiryDays} days
                 </Text>
                 <TouchableOpacity onPress={() => setFilterExpiryDays('')} style={{ marginLeft: 6 }}>
+                  <X size={14} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {!!filterBatch && (
+              <View style={styles.activePill}>
+                <Text style={styles.activePillText}>
+                  Batch: {filterBatch.charAt(0).toUpperCase() + filterBatch.slice(1)}
+                </Text>
+                <TouchableOpacity onPress={() => setFilterBatch(null)} style={{ marginLeft: 6 }}>
                   <X size={14} color={colors.primary} />
                 </TouchableOpacity>
               </View>
@@ -730,6 +865,8 @@ export default function MembersScreen({ navigation }) {
         setFilterEndDate={setFilterEndDate}
         filterExpiryDays={filterExpiryDays}
         setFilterExpiryDays={setFilterExpiryDays}
+        filterBatch={filterBatch}
+        setFilterBatch={setFilterBatch}
         colors={colors}
         insets={insets}
       />
@@ -933,6 +1070,27 @@ const sheetStyles = (colors, insets) => StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: 0.5,
   },
+  filterChip: {
+    height: 44,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceAlt,
+  },
+  filterChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accent + '15',
+  },
+  filterChipText: {
+    color: colors.textSecondary,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  filterChipTextActive: {
+    color: colors.accent,
+  },
 });
 
 // ─── Screen Styles ────────────────────────────────────────────────────────────
@@ -944,6 +1102,12 @@ const getStyles = (colors, insets) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     marginTop: 10,
+  },
+  screenHeading: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
   },
   searchRow: {
     flexDirection: 'row',
@@ -963,6 +1127,12 @@ const getStyles = (colors, insets) => StyleSheet.create({
   },
   searchIcon: { fontSize: 14, marginRight: 8 },
   searchBar: { flex: 1, height: 44, color: colors.textPrimary, fontSize: 14 },
+  clearSearchBtn: {
+    padding: 4,
+    marginLeft: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   sfBtn: {
     flexDirection: 'row',
     alignItems: 'center',

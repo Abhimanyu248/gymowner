@@ -10,6 +10,7 @@ import {
   Platform,
   RefreshControl,
   Linking,
+  Switch,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -50,6 +51,7 @@ export default function AddEditMemberScreen({ route, navigation }) {
     email: existingMember?.email || "",
     age: existingMember?.age ? existingMember.age.toString() : "",
     gender: existingMember?.gender || "male",
+    batch: existingMember?.batch || "morning",
     address: existingMember?.address || "",
     emergencyContact: existingMember?.emergencyContact != null ? existingMember.emergencyContact.toString() : "",
     planId:
@@ -61,15 +63,17 @@ export default function AddEditMemberScreen({ route, navigation }) {
       ? new Date(existingMember.joinDate)
       : new Date(),
     paymentMethod: "cash",
+    hasDietAccess: existingMember?.hasDietAccess || false,
   });
 
   const hasSaved = React.useRef(false);
 
   useEffect(() => {
-    // Only check if we are adding a NEW member, the phone number is fully typed (10 digits), and we haven't just saved
-    if (!isEditing && form.phone.length === 10 && !hasSaved.current) {
+    const cleanedPhone = form.phone.trim();
+    // Only check if the phone number is fully typed (10 digits) and we haven't just saved
+    if (cleanedPhone.length === 10 && !hasSaved.current) {
       const existing = members.find(
-        (m) => String(m.phone) === String(form.phone),
+        (m) => String(m.phone) === cleanedPhone && (!isEditing || (m.id !== memberId && m._id !== memberId)),
       );
       if (existing) {
         showAlert(
@@ -95,7 +99,7 @@ export default function AddEditMemberScreen({ route, navigation }) {
         );
       }
     }
-  }, [form.phone, isEditing, members, navigation]);
+  }, [form.phone, isEditing, memberId, members, navigation]);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -258,12 +262,27 @@ export default function AddEditMemberScreen({ route, navigation }) {
   };
 
   const handleSave = async () => {
-    if (!form.name || !form.phone || (!isEditing && !form.planId)) {
+    const cleanedPhone = form.phone ? form.phone.trim() : "";
+    if (!form.name || !cleanedPhone || (!isEditing && !form.planId)) {
       showAlert(
         "Error",
         isEditing
           ? "Name and Phone are required fields."
           : "Name, Phone, and Plan are required fields.",
+        [{ text: "OK" }],
+        "error",
+      );
+      return;
+    }
+
+    // Check for duplicate phone number
+    const duplicateMember = members.find(
+      (m) => String(m.phone) === cleanedPhone && (!isEditing || (m.id !== memberId && m._id !== memberId)),
+    );
+    if (duplicateMember) {
+      showAlert(
+        "Phone Number Already Used",
+        `Another member named "${duplicateMember.name}" is already registered with this phone number.`,
         [{ text: "OK" }],
         "error",
       );
@@ -317,18 +336,20 @@ export default function AddEditMemberScreen({ route, navigation }) {
     let payload;
     if (isEditing) {
       payload = {
-        name: form.name,
-        phone: form.phone,
-        email: form.email,
-        age: form.age ? parseInt(form.age, 10) : undefined,
+        name: form.name ? form.name.trim() : "",
+        phone: cleanedPhone,
+        email: form.email ? form.email.trim() : null,
+        age: form.age && form.age.trim() ? parseInt(form.age.trim(), 10) : null,
         gender: form.gender,
-        address: form.address,
-        emergencyContact: form.emergencyContact,
-        photo: uploadedImageUrl,
+        batch: form.batch,
+        address: form.address ? form.address.trim() : null,
+        emergencyContact: form.emergencyContact && form.emergencyContact.trim() ? form.emergencyContact.trim() : null,
+        photo: uploadedImageUrl || null,
         status: existingMember?.status || "active",
         planId: existingMember?.planId?._id || existingMember?.planId,
         joinDate: existingMember?.joinDate,
         expiryDate: existingMember?.expiryDate,
+        hasDietAccess: form.hasDietAccess,
       };
     } else {
       const joinDate = new Date(form.joinDate);
@@ -348,19 +369,21 @@ export default function AddEditMemberScreen({ route, navigation }) {
       }
 
       payload = {
-        name: form.name,
-        phone: form.phone,
-        email: form.email,
-        age: form.age ? parseInt(form.age, 10) : undefined,
+        name: form.name ? form.name.trim() : "",
+        phone: cleanedPhone,
+        email: form.email ? form.email.trim() : null,
+        age: form.age && form.age.trim() ? parseInt(form.age.trim(), 10) : null,
         gender: form.gender,
-        address: form.address,
-        emergencyContact: form.emergencyContact,
+        batch: form.batch,
+        address: form.address ? form.address.trim() : null,
+        emergencyContact: form.emergencyContact && form.emergencyContact.trim() ? form.emergencyContact.trim() : null,
         planId: form.planId,
-        photo: uploadedImageUrl,
+        photo: uploadedImageUrl || null,
         status: "active",
         joinDate: joinDate.toISOString(),
         expiryDate: calculatedExpiryDate.toISOString(),
         paymentMethod: form.paymentMethod,
+        hasDietAccess: form.hasDietAccess,
       };
     }
 
@@ -421,9 +444,13 @@ export default function AddEditMemberScreen({ route, navigation }) {
       }
     } catch (err) {
       hasSaved.current = false;
+      let errorMessage = err.message || "Failed to save member";
+      if (errorMessage.includes("E11000") || errorMessage.toLowerCase().includes("duplicate")) {
+        errorMessage = "A member with this phone number is already registered.";
+      }
       showAlert(
         "Error",
-        err.message || "Failed to save member",
+        errorMessage,
         [{ text: "OK" }],
         "error",
       );
@@ -555,6 +582,31 @@ export default function AddEditMemberScreen({ route, navigation }) {
           ))}
         </View>
 
+        <Text style={styles.label}>Batch *</Text>
+        <View
+          style={{ flexDirection: "row", gap: 8, marginBottom: spacing.md }}
+        >
+          {["morning", "evening"].map((b) => (
+            <TouchableOpacity
+              key={b}
+              style={[
+                styles.genderChip,
+                form.batch === b && styles.genderChipActive,
+              ]}
+              onPress={() => updateForm("batch", b)}
+            >
+              <Text
+                style={[
+                  styles.genderChipText,
+                  form.batch === b && styles.genderChipTextActive,
+                ]}
+              >
+                {b.charAt(0).toUpperCase() + b.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <Text style={styles.label}>Age</Text>
         <TextInput
           style={styles.input}
@@ -584,6 +636,19 @@ export default function AddEditMemberScreen({ route, navigation }) {
           maxLength={10}
           placeholderTextColor={placeholderColor}
         />
+
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginVertical: spacing.sm, paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border + '30' }}>
+          <View style={{ flex: 1, marginRight: spacing.md }}>
+            <Text style={[styles.label, { marginBottom: 2 }]}>Diet Plan Access</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted }}>Enable customized diet generation and tracking</Text>
+          </View>
+          <Switch
+            value={form.hasDietAccess}
+            onValueChange={(val) => updateForm("hasDietAccess", val)}
+            trackColor={{ false: colors.border, true: colors.accent }}
+            thumbColor={Platform.OS === 'android' ? '#ffffff' : undefined}
+          />
+        </View>
       </View>
 
       {!isEditing && (

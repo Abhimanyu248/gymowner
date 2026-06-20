@@ -95,8 +95,25 @@ export const useAppStore = create((set, get) => ({
     });
   },
 
-  fetchAppData: async () => {
-    set({ isLoadingData: true, error: null });
+  fetchStats: async () => {
+    try {
+      const [statsData, payStats] = await Promise.all([
+        api.getDashboardStats().catch(e => { console.error('dashboard stats error:', e); return null; }),
+        api.getPaymentStats().catch(e => { console.error('payment stats error:', e); return null; }),
+      ]);
+      set({
+        dashboardStats: statsData,
+        paymentStats: payStats,
+      });
+    } catch (e) {
+      console.error('fetchStats error:', e);
+    }
+  },
+
+  fetchAppData: async (silent = false) => {
+    if (!silent) {
+      set({ isLoadingData: true, error: null });
+    }
     try {
       // Fetch core data independently so one failure doesn't break everything
       const [membersData, deletedMembersData, plansData] = await Promise.all([
@@ -135,23 +152,47 @@ export const useAppStore = create((set, get) => ({
   // Member Operations
   addMember: async (payload) => {
     const member = await api.createMember(payload);
-    await get().fetchAppData();
-    return member;
+    const mapped = { ...member, id: member._id || member.id };
+    set(state => ({
+      members: [mapped, ...state.members]
+    }));
+    await get().fetchStats();
+    return mapped;
   },
   
-  updateMember: async (id, payload) => {
-    await api.updateMember(id, payload);
-    await get().fetchAppData();
+  updateMember: async (id, payload, silent = false) => {
+    const updated = await api.updateMember(id, payload);
+    const mapped = { ...updated, id: updated._id || updated.id };
+    set(state => ({
+      members: state.members.map(m => (m.id === id || m._id === id ? mapped : m))
+    }));
+    await get().fetchStats();
   },
 
   deleteMember: async (id, hard = false) => {
     await api.deleteMember(id, hard);
-    await get().fetchAppData();
+    set(state => {
+      const deletedMember = state.members.find(m => m.id === id || m._id === id);
+      const updatedMembers = state.members.filter(m => m.id !== id && m._id !== id);
+      const updatedDeleted = hard 
+        ? state.deletedMembers 
+        : (deletedMember ? [{ ...deletedMember, status: 'deleted' }, ...state.deletedMembers] : state.deletedMembers);
+      return {
+        members: updatedMembers,
+        deletedMembers: updatedDeleted,
+      };
+    });
+    await get().fetchStats();
   },
 
   restoreMember: async (id) => {
-    await api.restoreMember(id);
-    await get().fetchAppData();
+    const restored = await api.restoreMember(id);
+    const mapped = { ...restored, id: restored._id || restored.id };
+    set(state => ({
+      deletedMembers: state.deletedMembers.filter(m => m.id !== id && m._id !== id),
+      members: [mapped, ...state.members]
+    }));
+    await get().fetchStats();
   },
 
   getMemberCredentials: async (id) => {
@@ -160,29 +201,44 @@ export const useAppStore = create((set, get) => ({
 
   // Plan Operations
   addPlan: async (payload) => {
-    await api.createPlan(payload);
-    await get().fetchAppData();
+    const plan = await api.createPlan(payload);
+    const mapped = { ...plan, id: plan._id || plan.id };
+    set(state => ({
+      plans: [mapped, ...state.plans]
+    }));
   },
 
   updatePlan: async (id, payload) => {
-    await api.updatePlan(id, payload);
-    await get().fetchAppData();
+    const updated = await api.updatePlan(id, payload);
+    const mapped = { ...updated, id: updated._id || updated.id };
+    set(state => ({
+      plans: state.plans.map(p => (p.id === id || p._id === id ? mapped : p))
+    }));
   },
 
   deletePlan: async (id) => {
     await api.deletePlan(id);
-    await get().fetchAppData();
+    set(state => ({
+      plans: state.plans.filter(p => p.id !== id && p._id !== id)
+    }));
   },
 
   // Payment Operations
   addPayment: async (payload) => {
-    await api.createPayment(payload);
-    await get().fetchAppData();
+    const payment = await api.createPayment(payload);
+    const mapped = { ...payment, id: payment._id || payment.id };
+    set(state => ({
+      payments: [mapped, ...state.payments]
+    }));
+    await get().fetchStats();
   },
 
   deletePayment: async (id) => {
     await api.deletePayment(id);
-    await get().fetchAppData();
+    set(state => ({
+      payments: state.payments.filter(p => p.id !== id && p._id !== id)
+    }));
+    await get().fetchStats();
   },
 
   // Notification Operations

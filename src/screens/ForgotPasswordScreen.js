@@ -91,8 +91,8 @@ export default function ForgotPasswordScreen() {
 
   return (
     <View style={styles.safeArea}>
-      <ImageBackground 
-        source={{ uri: BACKGROUND_IMAGE }} 
+      <ImageBackground
+        source={{ uri: BACKGROUND_IMAGE }}
         style={styles.backgroundImage}
         resizeMode="cover"
       >
@@ -117,8 +117,8 @@ export default function ForgotPasswordScreen() {
             <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY }] }]}>
               <Text style={styles.title}>{step === 1 ? 'Forgot Password' : 'Reset Password'}</Text>
               <Text style={styles.subtitle}>
-                {step === 1 
-                  ? 'Enter your email to receive an OTP.' 
+                {step === 1
+                  ? 'Enter your email to receive an OTP.'
                   : 'Enter the OTP sent to your email and your new password.'}
               </Text>
 
@@ -192,7 +192,7 @@ export default function ForgotPasswordScreen() {
                 loading={loading}
                 style={styles.submitBtn}
               />
-              
+
               {step === 2 && (
                 <Button
                   title="Resend OTP"

@@ -1,11 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, TouchableOpacity, Pressable, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, TouchableOpacity, Pressable, Animated, Easing, Modal } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
 import MetricCard from '../components/MetricCard';
 import { radius, spacing, shadows } from '../theme/theme';
 import { useThemeColors } from '../theme/palette';
 import { LineChart } from 'react-native-chart-kit';
-import { Circle, G } from 'react-native-svg';
+import Svg, { Path, Circle, G, Line } from 'react-native-svg';
 
 const screenWidth = Dimensions.get('window').width;
 const yAxisWidth = 56;
@@ -16,39 +16,46 @@ export default function DashboardScreen() {
   const colors = useThemeColors();
   const styles = getStyles(colors);
   const [methodFilter, setMethodFilter] = React.useState('all');
+  const [chartYear, setChartYear] = React.useState(new Date().getFullYear());
   const [selectedPoint, setSelectedPoint] = React.useState(null);
   const [selectedPointMeta, setSelectedPointMeta] = React.useState(null);
-  const renderDot = React.useCallback(({ x, y, index, indexData }) => {
-    return (
-      <G key={`dot-target-${index}`}>
-        {/* Small visible dot */}
-        <Circle
-          cx={x}
-          cy={y}
-          r={4}
-          fill={colors.primary}
-          stroke={colors.surface}
-          strokeWidth={2}
-        />
-        {/* Invisible large touch target (48px diameter) */}
-        <Circle
-          cx={x}
-          cy={y}
-          r={24}
-          fill="transparent"
-          onPress={() => {
-            setSelectedPoint({ 
-              value: indexData, 
-              month: chartData[index]?.month || '', 
-              x, 
-              y 
-            });
-            setSelectedPointMeta({ x, y });
-          }}
-        />
-      </G>
-    );
-  }, [colors, chartData]);
+  const [showYearPicker, setShowYearPicker] = React.useState(false);
+
+  const availableYears = React.useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const years = new Set([currentYear, currentYear - 1]);
+    (payments || []).forEach((p) => {
+      const rawDate = p?.paidOn || p?.createdAt;
+      if (rawDate) {
+        const yr = new Date(rawDate).getFullYear();
+        if (!Number.isNaN(yr)) years.add(yr);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [payments]);
+
+  const activeLineColor = React.useMemo(() => {
+    if (methodFilter === 'cash') {
+      return colors.success;
+    }
+    if (methodFilter === 'upi') {
+      return colors.secondary;
+    }
+    return colors.primary;
+  }, [methodFilter, colors]);
+
+  const chartConfigColor = React.useCallback((opacity = 1) => {
+    try {
+      const hex = activeLineColor;
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    } catch (e) {
+      return `rgba(139, 92, 246, ${opacity})`;
+    }
+  }, [activeLineColor]);
+
   const [statsRange, setStatsRange] = React.useState('today');
   const [animatedPoints, setAnimatedPoints] = React.useState(new Array(12).fill(0));
   const [animatedMonthRevenue, setAnimatedMonthRevenue] = React.useState(0);
@@ -57,6 +64,7 @@ export default function DashboardScreen() {
   const chartTranslateY = React.useRef(new Animated.Value(12)).current;
   const chartScale = React.useRef(new Animated.Value(0.98)).current;
   const pulse = React.useRef(new Animated.Value(0)).current;
+  const chartPointPositions = React.useRef([]);
   const pointsAnimRef = React.useRef({
     frame: null,
     start: 0,
@@ -109,6 +117,113 @@ export default function DashboardScreen() {
     return { today, week, month, year };
   }, [payments]);
 
+  // ─── Interactive Svg Pie Chart helper methods ───
+  const getCoordinatesForPercent = React.useCallback((percent) => {
+    const x = Math.cos(2 * Math.PI * percent - Math.PI / 2);
+    const y = Math.sin(2 * Math.PI * percent - Math.PI / 2);
+    return [x, y];
+  }, []);
+
+  const getPieSlicePath = React.useCallback((startPercent, endPercent, radius = 70, cx = 100, cy = 100) => {
+    const [startX, startY] = getCoordinatesForPercent(startPercent);
+    const [endX, endY] = getCoordinatesForPercent(endPercent);
+
+    const x1 = cx + startX * radius;
+    const y1 = cy + startY * radius;
+    const x2 = cx + endX * radius;
+    const y2 = cy + endY * radius;
+
+    const largeArcFlag = endPercent - startPercent > 0.5 ? 1 : 0;
+
+    return `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+  }, [getCoordinatesForPercent]);
+
+  const [selectedSlice, setSelectedSlice] = React.useState(null);
+
+  // ─── Locally computed member batch breakdown ────────────────────────────
+  const batchStats = React.useMemo(() => {
+    let morning = 0;
+    let evening = 0;
+    let other = 0;
+
+    (members || []).forEach((m) => {
+      if (m.status === 'deleted') return;
+      const b = String(m.batch || '').toLowerCase();
+      if (b === 'morning') {
+        morning++;
+      } else if (b === 'evening') {
+        evening++;
+      } else {
+        other++;
+      }
+    });
+
+    return [
+      {
+        name: 'Morning',
+        population: morning,
+        color: colors.primary,
+        legendFontColor: colors.textSecondary,
+        legendFontSize: 11,
+      },
+      {
+        name: 'Evening',
+        population: evening,
+        color: colors.secondary,
+        legendFontColor: colors.textSecondary,
+        legendFontSize: 11,
+      },
+      {
+        name: 'Other/Unset',
+        population: other,
+        color: colors.textMuted,
+        legendFontColor: colors.textSecondary,
+        legendFontSize: 11,
+      },
+    ];
+  }, [members, colors]);
+
+  const defaultSelectedBatch = React.useMemo(() => {
+    let maxPop = -1;
+    let maxName = 'Morning';
+    batchStats.forEach((b) => {
+      if (b.population > maxPop) {
+        maxPop = b.population;
+        maxName = b.name;
+      }
+    });
+    return maxName.toLowerCase();
+  }, [batchStats]);
+
+  const activeSelectedSlice = selectedSlice || defaultSelectedBatch;
+
+  const pieSlices = React.useMemo(() => {
+    const total = batchStats.reduce((sum, b) => sum + b.population, 0);
+    if (total === 0) return [];
+
+    let accumulatedPercent = 0;
+    return batchStats.map((batch) => {
+      const percent = batch.population / total;
+      const startPercent = accumulatedPercent;
+      accumulatedPercent += percent;
+      const endPercent = accumulatedPercent;
+
+      return {
+        key: batch.name.toLowerCase(),
+        name: batch.name,
+        population: batch.population,
+        percent,
+        startPercent,
+        endPercent,
+        color: batch.color,
+      };
+    });
+  }, [batchStats]);
+
+  const hasMemberData = React.useMemo(() => {
+    return batchStats.some((b) => b.population > 0);
+  }, [batchStats]);
+
   // ─── Locally computed new-members-this-month ────────────────────────────
   // Counts unique members who have at least one payment this month.
   // Using payments instead of joinDate avoids inflated counts from
@@ -131,22 +246,61 @@ export default function DashboardScreen() {
   }, [payments]);
 
   const chartData = React.useMemo(() => {
-    const monthlyRevenue = new Array(12).fill(0);
-    const year = new Date().getFullYear();
+    const monthlyStats = Array.from({ length: 12 }, () => ({
+      revenue: 0,
+      cashRevenue: 0,
+      upiRevenue: 0,
+      cashCount: 0,
+      upiCount: 0,
+      totalCount: 0,
+    }));
 
     (payments || []).forEach((p) => {
-      if (methodFilter !== 'all' && p?.paymentMethod !== methodFilter) return;
       // Use createdAt as fallback when paidOn is absent
       const rawDate = p?.paidOn || p?.createdAt;
       const paidDate = rawDate ? new Date(rawDate) : null;
-      if (!paidDate || Number.isNaN(paidDate.getTime()) || paidDate.getFullYear() !== year) return;
+      if (!paidDate || Number.isNaN(paidDate.getTime()) || paidDate.getFullYear() !== chartYear) return;
 
       const amount = Number(p?.amount) || 0;
-      monthlyRevenue[paidDate.getMonth()] += amount;
+      const method = String(p?.paymentMethod || '').toLowerCase();
+      const monthIdx = paidDate.getMonth();
+
+      if (method === 'cash') {
+        monthlyStats[monthIdx].cashRevenue += amount;
+        monthlyStats[monthIdx].cashCount++;
+      } else if (method === 'upi') {
+        monthlyStats[monthIdx].upiRevenue += amount;
+        monthlyStats[monthIdx].upiCount++;
+      } else {
+        monthlyStats[monthIdx].cashRevenue += amount;
+        monthlyStats[monthIdx].cashCount++;
+      }
+      monthlyStats[monthIdx].totalCount++;
+
+      if (methodFilter === 'all' || method === methodFilter) {
+        monthlyStats[monthIdx].revenue += amount;
+      }
     });
 
-    return monthlyRevenue.map((revenue, idx) => ({ month: monthNames[idx], revenue }));
-  }, [payments, methodFilter, monthNames]);
+    return monthlyStats.map((stats, idx) => {
+      const prevMonthStats = idx > 0 ? monthlyStats[idx - 1] : null;
+      let momPercent = 0;
+      if (prevMonthStats && prevMonthStats.revenue > 0) {
+        momPercent = ((stats.revenue - prevMonthStats.revenue) / prevMonthStats.revenue) * 100;
+      }
+
+      return {
+        month: monthNames[idx],
+        revenue: stats.revenue,
+        cashRevenue: stats.cashRevenue,
+        upiRevenue: stats.upiRevenue,
+        cashCount: stats.cashCount,
+        upiCount: stats.upiCount,
+        totalCount: stats.totalCount,
+        momPercent,
+      };
+    });
+  }, [payments, methodFilter, chartYear, monthNames]);
 
   const maxRevenue = React.useMemo(
     () => Math.max(0, ...chartData.map((d) => Number(d.revenue) || 0)),
@@ -165,6 +319,67 @@ export default function DashboardScreen() {
       return value;
     });
   }, [yAxisMax]);
+
+  const selectChartPoint = React.useCallback((index, coordinates) => {
+    const point = chartData[index];
+    if (!point || !coordinates) return;
+
+    const selection = {
+      value: point.revenue,
+      month: point.month,
+      x: coordinates.x,
+      y: coordinates.y,
+      index,
+    };
+    setSelectedPoint(selection);
+    setSelectedPointMeta({ x: selection.x, y: selection.y });
+  }, [chartData]);
+
+  const selectNearestChartPoint = React.useCallback((locationX) => {
+    if (!Number.isFinite(locationX)) return;
+
+    const nearestPoint = chartPointPositions.current.reduce((nearest, point) => {
+      if (!point) return nearest;
+      if (!nearest || Math.abs(point.x - locationX) < Math.abs(nearest.x - locationX)) {
+        return point;
+      }
+      return nearest;
+    }, null);
+
+    if (nearestPoint) {
+      selectChartPoint(nearestPoint.index, nearestPoint);
+    }
+  }, [selectChartPoint]);
+
+  const renderDot = React.useCallback(({ x, y, index }) => {
+    chartPointPositions.current[index] = { x, y, index };
+    const isSelected = selectedPoint?.index === index;
+
+    return (
+      <G key={`revenue-dot-${index}`} pointerEvents="none">
+        {isSelected && (
+          <Line
+            x1={x}
+            y1={16}
+            x2={x}
+            y2={180}
+            stroke={activeLineColor}
+            strokeWidth={1.5}
+            strokeDasharray="4, 4"
+            opacity={0.7}
+          />
+        )}
+        <Circle
+          cx={x}
+          cy={y}
+          r={isSelected ? 6 : 4}
+          fill={isSelected ? colors.surface : activeLineColor}
+          stroke={isSelected ? activeLineColor : colors.surface}
+          strokeWidth={2}
+        />
+      </G>
+    );
+  }, [activeLineColor, colors.surface, selectedPoint?.index]);
 
   const joinedAndPaymentStatsFallback = React.useMemo(() => {
     const now = new Date();
@@ -347,6 +562,9 @@ export default function DashboardScreen() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
+  const activeMonthIndex = selectedPoint !== null ? selectedPoint.index : new Date().getMonth();
+  const activeMonthData = chartData[activeMonthIndex] || chartData[new Date().getMonth()] || chartData[0];
+
   return (
     <ScrollView
       style={styles.container}
@@ -392,7 +610,63 @@ export default function DashboardScreen() {
         <MetricCard title="Today's Rev." value={`Rs ${revSummary.today.toLocaleString()}`} color={colors.secondary} />
       </View>
 
-      <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>Monthly Revenue</Text>
+      <View style={styles.chartHeaderRow}>
+        <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Monthly Revenue</Text>
+        <TouchableOpacity
+          style={styles.dropdownButton}
+          onPress={() => setShowYearPicker(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.dropdownButtonText}>{chartYear}</Text>
+          <Text style={styles.dropdownButtonArrow}>▼</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Modal
+        visible={showYearPicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowYearPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowYearPicker(false)}
+        >
+          <View style={styles.dropdownMenu}>
+            <Text style={styles.dropdownMenuTitle}>Select Year</Text>
+            {availableYears.map((yr) => (
+              <TouchableOpacity
+                key={yr}
+                style={[
+                  styles.dropdownMenuItem,
+                  chartYear === yr && styles.dropdownMenuItemActive,
+                ]}
+                onPress={() => {
+                  setChartYear(yr);
+                  setSelectedPoint(null);
+                  setSelectedPointMeta(null);
+                  setShowYearPicker(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.dropdownMenuItemText,
+                    chartYear === yr && styles.dropdownMenuItemTextActive,
+                  ]}
+                >
+                  {yr}
+                </Text>
+                {chartYear === yr && (
+                  <Text style={styles.dropdownMenuItemCheck}>✓</Text>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <View style={styles.filterRow}>
         {[
           { value: 'all', label: 'All' },
@@ -440,13 +714,7 @@ export default function DashboardScreen() {
               setSelectedPointMeta(null);
             }}
           >
-            <Pressable
-              style={styles.chartPlotWrapper}
-              onPress={() => {
-                setSelectedPoint(null);
-                setSelectedPointMeta(null);
-              }}
-            >
+            <View style={styles.chartPlotWrapper}>
               <LineChart
                 data={{
                   labels: chartData.map((d) => d.month),
@@ -473,7 +741,7 @@ export default function DashboardScreen() {
                   backgroundGradientFrom: colors.surface,
                   backgroundGradientTo: colors.surfaceAlt,
                   decimalPlaces: 0,
-                  color: (opacity = 1) => `rgba(139, 92, 246, ${opacity})`,
+                  color: chartConfigColor,
                   labelColor: () => colors.textSecondary,
                   style: { borderRadius: radius.card },
                   propsForBackgroundLines: { stroke: colors.border },
@@ -504,6 +772,7 @@ export default function DashboardScreen() {
                     {
                       left: Math.max(0, (selectedPointMeta.x || 0) - 11),
                       top: Math.max(0, (selectedPointMeta.y || 0) - 11),
+                      backgroundColor: activeLineColor,
                       transform: [
                         {
                           scale: pulse.interpolate({
@@ -520,10 +789,159 @@ export default function DashboardScreen() {
                   ]}
                 />
               )}
-            </Pressable>
+              <Pressable
+                style={styles.chartTouchLayer}
+                accessibilityRole="button"
+                accessibilityLabel="Monthly revenue chart. Tap near a month to inspect its revenue."
+                onPress={(event) => selectNearestChartPoint(event.nativeEvent.locationX)}
+              />
+            </View>
           </ScrollView>
         </View>
       </Animated.View>
+
+      {/* Monthly Revenue Insight Card */}
+      <View style={styles.revenueInsightCard}>
+        <View style={styles.insightHeaderRow}>
+          <Text style={styles.insightTitle}>📈 {activeMonthData.month} Revenue Insights</Text>
+          {activeMonthData.momPercent !== 0 && (
+            <View style={[
+              styles.trendBadge,
+              { backgroundColor: activeMonthData.momPercent > 0 ? `${colors.success}15` : `${colors.danger}15` }
+            ]}>
+              <Text style={[
+                styles.trendText,
+                { color: activeMonthData.momPercent > 0 ? colors.success : colors.danger }
+              ]}>
+                {activeMonthData.momPercent > 0 ? '▲' : '▼'} {Math.abs(Math.round(activeMonthData.momPercent))}% MoM
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.insightStatsRow}>
+          <View style={styles.insightStat}>
+            <Text style={styles.insightStatLabel}>Total Revenue</Text>
+            <Text style={styles.insightStatValue}>Rs {activeMonthData.revenue.toLocaleString()}</Text>
+          </View>
+          <View style={styles.insightStatDivider} />
+          <View style={styles.insightStat}>
+            <Text style={styles.insightStatLabel}>Transactions</Text>
+            <Text style={styles.insightStatValue}>{activeMonthData.totalCount} payments</Text>
+          </View>
+        </View>
+
+        <View style={styles.insightDetailRow}>
+          <View style={styles.insightDetailCol}>
+            <View style={[styles.methodDot, { backgroundColor: colors.success }]} />
+            <Text style={styles.insightDetailText}>
+              Cash: <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Rs {activeMonthData.cashRevenue.toLocaleString()}</Text> ({activeMonthData.cashCount} txs)
+            </Text>
+          </View>
+          <View style={styles.insightDetailCol}>
+            <View style={[styles.methodDot, { backgroundColor: colors.secondary }]} />
+            <Text style={styles.insightDetailText}>
+              UPI: <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Rs {activeMonthData.upiRevenue.toLocaleString()}</Text> ({activeMonthData.upiCount} txs)
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.pieContainer}>
+        <Text style={styles.sectionTitle}>Members by Batch</Text>
+        {hasMemberData ? (
+          <View>
+            <View style={styles.pieLayoutRow}>
+              {/* Interactive Svg Pie Chart */}
+              <View style={styles.pieChartWrapper}>
+                <Svg width={200} height={200}>
+                  <G transform="translate(0, 0)">
+                    {pieSlices.map((slice) => {
+                      const isSelected = activeSelectedSlice === slice.key;
+                      const radius = isSelected ? 80 : 70;
+
+                      if (slice.percent >= 0.999) {
+                        return (
+                          <Circle
+                            key={slice.key}
+                            cx={100}
+                            cy={100}
+                            r={radius}
+                            fill={slice.color}
+                            onPress={() => setSelectedSlice(slice.key)}
+                          />
+                        );
+                      }
+
+                      if (slice.percent === 0) return null;
+
+                      const pathData = getPieSlicePath(slice.startPercent, slice.endPercent, radius, 100, 100);
+
+                      return (
+                        <Path
+                          key={slice.key}
+                          d={pathData}
+                          fill={slice.color}
+                          stroke={colors.surface}
+                          strokeWidth={2}
+                          onPress={() => setSelectedSlice(slice.key)}
+                        />
+                      );
+                    })}
+                  </G>
+                </Svg>
+              </View>
+
+              {/* Legend column */}
+              <View style={styles.pieDetailsColumn}>
+                {batchStats.map((b) => {
+                  const key = b.name.toLowerCase();
+                  const isSelected = activeSelectedSlice === key;
+                  return (
+                    <TouchableOpacity
+                      key={b.name}
+                      style={[styles.legendItem, isSelected && styles.legendItemActive]}
+                      onPress={() => setSelectedSlice(key)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={[styles.legendColorBox, { backgroundColor: b.color }]} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.legendName, isSelected && styles.legendNameActive]}>
+                          {b.name}
+                        </Text>
+                        <Text style={styles.legendPopulation}>
+                          {b.population} members ({Math.round((b.population / Math.max(1, members.length)) * 100)}%)
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Selected batch summary details */}
+            <View style={styles.selectedBatchCard}>
+              <Text style={styles.selectedBatchTitle}>
+                {activeSelectedSlice === 'morning' ? '🌅 Morning Batch Details' : 
+                 activeSelectedSlice === 'evening' ? '🌇 Evening Batch Details' : 
+                 '❓ Other / Unset Batch Details'}
+              </Text>
+              <Text style={styles.selectedBatchDescription}>
+                {activeSelectedSlice === 'morning' 
+                  ? `Morning batch has ${batchStats[0].population} active members. Peak attendance is usually between 6:00 AM and 9:00 AM.`
+                  : activeSelectedSlice === 'evening'
+                  ? `Evening batch has ${batchStats[1].population} active members. Peak attendance is usually between 5:00 PM and 8:30 PM.`
+                  : `There are ${batchStats[2].population} members without an explicitly assigned batch.`
+                }
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No member data available</Text>
+          </View>
+        )}
+      </View>
 
       <View style={styles.statsPanel}>
         <View style={styles.statsTabs}>
@@ -575,9 +993,9 @@ const getStyles = (colors) => StyleSheet.create({
     marginBottom: spacing.lg,
   },
   greeting: {
-    fontSize: 22,
+    fontSize: 25,
     fontWeight: '800',
-    fontFamily: 'Poppins-Bold',
+  
     color: colors.textPrimary,
   },
   date: {
@@ -677,6 +1095,9 @@ const getStyles = (colors) => StyleSheet.create({
     position: 'relative',
     width: chartContentWidth,
     height: 220,
+  },
+  chartTouchLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   tooltip: {
     position: 'absolute',
@@ -783,6 +1204,255 @@ const getStyles = (colors) => StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     marginTop: 3,
+    fontWeight: '600',
+  },
+  pieContainer: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    ...shadows.sm,
+  },
+  pieLayoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+  },
+  pieChartWrapper: {
+    width: 200,
+    height: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pieDetailsColumn: {
+    flex: 1,
+    paddingLeft: spacing.md,
+    justifyContent: 'center',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 12,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  legendItemActive: {
+    backgroundColor: colors.background === '#141A22' ? '#222934' : '#F2ECE1',
+    borderColor: colors.border,
+  },
+  legendColorBox: {
+    width: 12,
+    height: 12,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  legendName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  legendNameActive: {
+    color: colors.textPrimary,
+  },
+  legendPopulation: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  selectedBatchCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 16,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  selectedBatchTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  selectedBatchDescription: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  chartHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dropdownButtonText: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginRight: 6,
+  },
+  dropdownButtonArrow: {
+    color: colors.accent,
+    fontSize: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownMenu: {
+    width: '75%',
+    maxWidth: 260,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 6,
+  },
+  dropdownMenuTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  dropdownMenuItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  dropdownMenuItemActive: {
+    backgroundColor: `${colors.accent}15`,
+  },
+  dropdownMenuItemText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  dropdownMenuItemTextActive: {
+    color: colors.accent,
+    fontWeight: '700',
+  },
+  dropdownMenuItemCheck: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  revenueInsightCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    ...shadows.sm,
+  },
+  insightHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  insightTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  trendBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  trendText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  insightStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  insightStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  insightStatLabel: {
+    fontSize: 9,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  insightStatValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  insightStatDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: colors.border,
+  },
+  insightDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  insightDetailCol: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  methodDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  insightDetailText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  emptyContainer: {
+    height: 180,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    color: colors.textMuted,
     fontWeight: '600',
   },
 });

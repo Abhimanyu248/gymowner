@@ -1,4 +1,4 @@
-import { defaultMembershipTypes } from '../data/defaultData';
+ import { defaultMembershipTypes } from '../data/defaultData';
 
 export const createEmptyForm = (membershipTypes) => ({
   name: '',
@@ -112,8 +112,6 @@ export const calculateDaysLeft = (expiryDate) => {
   }
 
   const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const expiryStart = new Date(expiry.getFullYear(), expiry.getMonth(), expiry.getDate());
 
-  return Math.ceil((expiryStart - todayStart) / (1000 * 60 * 60 * 24));
+  return Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
 };
