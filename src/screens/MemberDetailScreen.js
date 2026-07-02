@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Platform, TouchableOpacity, Linking, Modal, Pressable, RefreshControl, Animated, Easing, BackHandler, Switch, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, Platform, TouchableOpacity, Linking, Modal, Pressable, RefreshControl, Animated, Easing, BackHandler, Switch, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
+import PagerView from 'react-native-pager-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Phone, MessageCircle, UserRound, ChevronRight, CalendarDays, MapPin, Activity, AlertCircle, Bell, Key, UserRoundPen, Share2, Mail, CalendarClock, Salad, RefreshCw, Sparkles, ChefHat, Plus, Minus } from 'lucide-react-native';
+import { Phone, MessageCircle, UserRound, ChevronRight, CalendarDays, MapPin, Activity, AlertCircle, Bell, Key, UserRoundPen, Share2, Mail, CalendarClock, Salad, ChefHat, Plus, Minus } from 'lucide-react-native';
 import { useAppStore } from '../store/useAppStore';
 import Button from '../components/Button';
 import CustomAlert from '../components/CustomAlert';
@@ -28,7 +29,7 @@ export default function MemberDetailScreen({ route, navigation }) {
     setImageError(false);
   }, [memberId, member?.photo, member?.imageUrl]);
   const [reminderLoading, setReminderLoading] = useState(false);
-  const [renewForm, setRenewForm] = useState({ membershipType: '', joinDate: '', paymentMethod: 'cash' });
+  const [renewForm, setRenewForm] = useState({ membershipType: '', joinDate: '', paymentMethod: 'cash', discount: '', notes: '' });
   const [renewError, setRenewError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
@@ -44,33 +45,30 @@ export default function MemberDetailScreen({ route, navigation }) {
   const [localDietLimit, setLocalDietLimit] = useState(member?.dietGenerationDailyLimit ?? 3);
   const [limitUpdating, setLimitUpdating] = useState(false);
 
-  // Tab content switching & loading completion animations
-  const tabFadeAnim = React.useRef(new Animated.Value(0)).current;
-  const tabSlideAnim = React.useRef(new Animated.Value(8)).current;
+  const memberTabs = React.useMemo(
+    () => [
+      { key: 'details', label: 'Details' },
+      { key: 'payments', label: 'Payments' },
+      { key: 'diet', label: 'Diet Plan' },
+    ],
+    []
+  );
+  const pagerRef = React.useRef(null);
+  const [tabHeights, setTabHeights] = useState({});
+  const activeTabIndex = Math.max(memberTabs.findIndex((tab) => tab.key === activeTab), 0);
+  const pagerHeight = Math.max(tabHeights[activeTab] || 420, 240);
 
-  React.useEffect(() => {
-    // Only animate if we are not loading the diet tab!
-    // If we are on details or payments tab, we always animate.
-    // If we are on diet tab, we animate only when it's NOT loading (so initially on switch if not loading, or when loading completes).
-    if (activeTab !== 'diet' || !dietLoading) {
-      tabFadeAnim.setValue(0);
-      tabSlideAnim.setValue(8);
-      Animated.parallel([
-        Animated.timing(tabFadeAnim, {
-          toValue: 1,
-          duration: 220,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(tabSlideAnim, {
-          toValue: 0,
-          duration: 220,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [activeTab, dietLoading]);
+  const handleTabPress = (tabKey) => {
+    const nextIndex = memberTabs.findIndex((tab) => tab.key === tabKey);
+    if (nextIndex < 0) return;
+    setActiveTab(tabKey);
+    pagerRef.current?.setPage(nextIndex);
+  };
+
+  const handleTabPageLayout = (tabKey, event) => {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+    setTabHeights((prev) => (prev[tabKey] === nextHeight ? prev : { ...prev, [tabKey]: nextHeight }));
+  };
 
   const showAlert = (title, message, buttons = [{ text: 'OK' }], type = 'info', icon) => {
     setAlertConfig({ visible: true, title, message, buttons, type, icon });
@@ -80,7 +78,7 @@ export default function MemberDetailScreen({ route, navigation }) {
 
   const [credLoading, setCredLoading] = useState(false);
 
-  
+
 
   // Sync state if member details change
   React.useEffect(() => {
@@ -205,6 +203,7 @@ export default function MemberDetailScreen({ route, navigation }) {
     () => paymentHistory.reduce((sum, p) => sum + (Number(p?.amount) || 0), 0),
     [paymentHistory]
   );
+  const lastPayment = paymentHistory[0];
 
   React.useEffect(() => {
     const onBackPress = () => {
@@ -259,6 +258,8 @@ export default function MemberDetailScreen({ route, navigation }) {
       membershipType: selectedPlan ? selectedPlan.name : plans[0]?.name || '',
       joinDate: formatStorageDate(defaultJoinDate),
       paymentMethod: 'cash',
+      discount: '',
+      notes: '',
     });
     setRenewError('');
     setShowRenewSheet(true);
@@ -304,11 +305,19 @@ export default function MemberDetailScreen({ route, navigation }) {
         status: 'active',
       });
 
+      const basePrice = Number(pickedPlan.amount || pickedPlan.price || 0);
+      const discountVal = Number(renewForm.discount) || 0;
+      const finalAmount = Math.max(0, basePrice - discountVal);
+
+      const paymentNotes = renewForm.notes
+        ? `Renewal for ${pickedPlan.name} Plan - ${renewForm.notes.trim()}`
+        : `Renewal for ${pickedPlan.name} Plan`;
+
       await addPayment({
         memberId: member.id,
-        amount: pickedPlan.amount || pickedPlan.price || 0,
+        amount: finalAmount,
         paymentMethod: renewForm.paymentMethod || 'cash',
-        notes: `Renewal for ${member.name} (${pickedPlan.name})`,
+        notes: paymentNotes,
       });
 
       closeRenewSheet();
@@ -564,9 +573,9 @@ Let's keep making gains! 💯`;
       <View style={styles.heroCard}>
         {(member.photo || member.imageUrl) && !imageError ? (
           <TouchableOpacity activeOpacity={0.9} onPress={() => setShowImagePreview(true)}>
-            <Image 
-              source={{ uri: member.photo || member.imageUrl }} 
-              style={styles.avatar} 
+            <Image
+              source={{ uri: member.photo || member.imageUrl }}
+              style={styles.avatar}
               onError={() => setImageError(true)}
             />
           </TouchableOpacity>
@@ -607,12 +616,6 @@ Let's keep making gains! 💯`;
           </View>
         </View>
 
-        <View style={styles.metricActions}>
-          <View style={styles.metricBlock}>
-            <Text style={styles.metricLabel}>TOTAL PAYMENTS</Text>
-            <Text style={styles.metricValue}>Rs {totalPaymentAmount.toLocaleString()}</Text>
-          </View>
-        </View>
 
         <View style={styles.contactRow}>
           <TouchableOpacity style={styles.contactBtnCall} onPress={openPhone}>
@@ -716,261 +719,289 @@ Let's keep making gains! 💯`;
 
       <View style={styles.detailsCard}>
         <View style={styles.tabsRow}>
-          <TouchableOpacity onPress={() => setActiveTab('details')} style={styles.tabButton}>
-            <Text style={activeTab === 'details' ? styles.activeTab : styles.inactiveTab}>Details</Text>
-            <View style={[styles.tabUnderline, activeTab === 'details' ? styles.tabUnderlineActive : styles.tabUnderlineInactive]} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab('payments')} style={styles.tabButton}>
-            <Text style={activeTab === 'payments' ? styles.activeTab : styles.inactiveTab}>Payments</Text>
-            <View style={[styles.tabUnderline, activeTab === 'payments' ? styles.tabUnderlineActive : styles.tabUnderlineInactive]} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab('diet')} style={styles.tabButton}>
-            <Text style={activeTab === 'diet' ? styles.activeTab : styles.inactiveTab}>Diet Plan</Text>
-            <View style={[styles.tabUnderline, activeTab === 'diet' ? styles.tabUnderlineActive : styles.tabUnderlineInactive]} />
-          </TouchableOpacity>
+          {memberTabs.map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
+              onPress={() => handleTabPress(tab.key)}
+              style={[styles.tabButton, activeTab === tab.key && styles.activeTabButton]}
+              activeOpacity={0.8}
+            >
+              <Text style={activeTab === tab.key ? styles.activeTab : styles.inactiveTab}>{tab.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        <Animated.View style={{ opacity: tabFadeAnim, transform: [{ translateY: tabSlideAnim }] }}>
-          {activeTab === 'details' ? (
-          <>
-            <View style={styles.fieldWrapAttractive}>
-              <View style={styles.fieldIconWrap}>
-                <Phone color={colors.accent} size={20} />
-              </View>
-              <View style={styles.fieldContent}>
-                <Text style={styles.fieldLabelAttractive}>Phone Number</Text>
-                <Text style={styles.fieldValueAttractive}>{member.phone || '-'}</Text>
-              </View>
-            </View>
-
-            <View style={styles.fieldWrapAttractive}>
-              <View style={styles.fieldIconWrap}>
-                <Mail color={colors.accent} size={20} />
-              </View>
-              <View style={styles.fieldContent}>
-                <Text style={styles.fieldLabelAttractive}>Email Address</Text>
-                <Text style={styles.fieldValueAttractive}>{member.email || '-'}</Text>
-              </View>
-            </View>
-
-            <View style={styles.fieldWrapAttractive}>
-              <View style={styles.fieldIconWrap}>
-                <UserRound color={colors.accent} size={20} />
-              </View>
-              <View style={styles.fieldContent}>
-                <Text style={styles.fieldLabelAttractive}>Gender</Text>
-                <Text style={styles.fieldValueAttractive}>{member.gender?.toUpperCase() || '-'}</Text>
-              </View>
-            </View>
-
-            <View style={styles.fieldWrapAttractive}>
-              <View style={styles.fieldIconWrap}>
-                <CalendarClock color={colors.accent} size={20} />
-              </View>
-              <View style={styles.fieldContent}>
-                <Text style={styles.fieldLabelAttractive}>Batch</Text>
-                <Text style={styles.fieldValueAttractive}>{member.batch ? (member.batch.charAt(0).toUpperCase() + member.batch.slice(1)) : '-'}</Text>
-              </View>
-            </View>
-
-            <View style={styles.fieldWrapAttractive}>
-              <View style={styles.fieldIconWrap}>
-                <CalendarDays color={colors.accent} size={20} />
-              </View>
-              <View style={styles.fieldContent}>
-                <Text style={styles.fieldLabelAttractive}>Joining Date</Text>
-                <Text style={styles.fieldValueAttractive}>{memberSince}</Text>
-              </View>
-            </View>
-
-            <View style={styles.fieldWrapAttractive}>
-              <View style={styles.fieldIconWrap}>
-                <AlertCircle color={colors.accent} size={20} />
-              </View>
-              <View style={[styles.fieldContent, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-                <View>
-                  <Text style={styles.fieldLabelAttractive}>Emergency Contact</Text>
-                  <Text style={styles.fieldValueAttractive}>{member.emergencyContact || '-'}</Text>
+        <PagerView
+          ref={pagerRef}
+          style={[styles.pagerView, { height: pagerHeight }]}
+          initialPage={activeTabIndex}
+          offscreenPageLimit={2}
+          scrollEnabled={!showRenewSheet}
+          onPageSelected={(event) => {
+            const nextTab = memberTabs[event.nativeEvent.position]?.key;
+            if (nextTab) setActiveTab(nextTab);
+          }}
+        >
+          <View key="details" style={styles.pagerPage}>
+            <View style={styles.pagerPageInner} onLayout={(event) => handleTabPageLayout('details', event)}>
+              <View style={styles.fieldWrapAttractive}>
+                <View style={styles.fieldIconWrap}>
+                  <Phone color={colors.accent} size={20} />
                 </View>
-                {member.emergencyContact ? (
-                  <TouchableOpacity style={styles.emergencyBtnAttractive} onPress={contactEmergency}>
-                    <Phone color="#FFFFFF" size={16} />
-                  </TouchableOpacity>
-                ) : null}
+                <View style={styles.fieldContent}>
+                  <Text style={styles.fieldLabelAttractive}>Phone Number</Text>
+                  <Text style={styles.fieldValueAttractive}>{member.phone || '-'}</Text>
+                </View>
               </View>
-            </View>
 
-            <View style={styles.fieldWrapAttractive}>
-              <View style={styles.fieldIconWrap}>
-                <MapPin color={colors.accent} size={20} />
+              <View style={styles.fieldWrapAttractive}>
+                <View style={styles.fieldIconWrap}>
+                  <Mail color={colors.accent} size={20} />
+                </View>
+                <View style={styles.fieldContent}>
+                  <Text style={styles.fieldLabelAttractive}>Email Address</Text>
+                  <Text style={styles.fieldValueAttractive}>{member.email || '-'}</Text>
+                </View>
               </View>
-              <View style={styles.fieldContent}>
-                <Text style={styles.fieldLabelAttractive}>Address</Text>
-                <Text style={styles.fieldValueAttractive}>{member.address || '-'}</Text>
+
+              <View style={styles.fieldWrapAttractive}>
+                <View style={styles.fieldIconWrap}>
+                  <UserRound color={colors.accent} size={20} />
+                </View>
+                <View style={styles.fieldContent}>
+                  <Text style={styles.fieldLabelAttractive}>Gender</Text>
+                  <Text style={styles.fieldValueAttractive}>{member.gender?.toUpperCase() || '-'}</Text>
+                </View>
               </View>
-            </View>
-          </>
-        ) : activeTab === 'payments' ? (
-          <View style={styles.historyWrap}>
-            {paymentHistory.length === 0 ? (
-              <Text style={styles.emptyHistory}>No payment history for this member yet.</Text>
-            ) : (
-              paymentHistory.map((payment, idx) => (
-                <View
-                  key={payment.id || payment._id || `${idx}-${payment.amount}`}
-                  style={[styles.historyRow, idx === paymentHistory.length - 1 && styles.historyRowLast]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.historyDate}>{formatDate(payment.paidOn || payment.createdAt)}</Text>
-                    <Text style={styles.historyMeta}>{(payment.paymentMethod || 'cash').toUpperCase()}</Text>
-                    <Text style={styles.historyMeta}>{(payment.notes || 'payment received')}</Text>
+
+              <View style={styles.fieldWrapAttractive}>
+                <View style={styles.fieldIconWrap}>
+                  <CalendarClock color={colors.accent} size={20} />
+                </View>
+                <View style={styles.fieldContent}>
+                  <Text style={styles.fieldLabelAttractive}>Batch</Text>
+                  <Text style={styles.fieldValueAttractive}>{member.batch ? (member.batch.charAt(0).toUpperCase() + member.batch.slice(1)) : '-'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.fieldWrapAttractive}>
+                <View style={styles.fieldIconWrap}>
+                  <CalendarDays color={colors.accent} size={20} />
+                </View>
+                <View style={styles.fieldContent}>
+                  <Text style={styles.fieldLabelAttractive}>Joining Date</Text>
+                  <Text style={styles.fieldValueAttractive}>{memberSince}</Text>
+                </View>
+              </View>
+
+              <View style={styles.fieldWrapAttractive}>
+                <View style={styles.fieldIconWrap}>
+                  <AlertCircle color={colors.accent} size={20} />
+                </View>
+                <View style={[styles.fieldContent, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                  <View>
+                    <Text style={styles.fieldLabelAttractive}>Emergency Contact</Text>
+                    <Text style={styles.fieldValueAttractive}>{member.emergencyContact || '-'}</Text>
                   </View>
-                  <Text style={styles.historyAmount}>Rs {Number(payment.amount || 0).toLocaleString()}</Text>
+                  {member.emergencyContact ? (
+                    <TouchableOpacity style={styles.emergencyBtnAttractive} onPress={contactEmergency}>
+                      <Phone color="#FFFFFF" size={16} />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
-              ))
-            )}
+              </View>
+
+              <View style={styles.fieldWrapAttractive}>
+                <View style={styles.fieldIconWrap}>
+                  <MapPin color={colors.accent} size={20} />
+                </View>
+                <View style={styles.fieldContent}>
+                  <Text style={styles.fieldLabelAttractive}>Address</Text>
+                  <Text style={styles.fieldValueAttractive}>{member.address || '-'}</Text>
+                </View>
+              </View>
+            </View>
           </View>
-        ) : (
-          <View>
-            {!localDietAccess ? (
-              <View style={styles.dietAccessDisabledContainer}>
-                <Salad color={colors.textMuted} size={48} style={{ marginBottom: 12 }} />
-                <Text style={styles.dietAccessDisabledText}>Diet Access is currently disabled</Text>
-                <Text style={styles.dietAccessDisabledSub}>Enable access to view the member's diet plan details.</Text>
-                <View style={styles.centeredToggleRow}>
-                  <Text style={styles.toggleRowLabel}>Enable Access</Text>
-                  <Switch
-                    value={localDietAccess}
-                    onValueChange={handleToggleDietAccess}
-                    trackColor={{ false: colors.border, true: colors.accent }}
-                    thumbColor={Platform.OS === 'android' ? '#ffffff' : undefined}
-                    disabled={isSoftDeleted}
-                  />
+
+          <View key="payments" style={styles.pagerPage}>
+            <View style={styles.pagerPageInner} onLayout={(event) => handleTabPageLayout('payments', event)}>
+              <View style={styles.paymentSummaryRow}>
+                <View style={styles.paymentSummaryBox}>
+                  <Text style={styles.paymentSummaryLabel}>Total Amount</Text>
+                  <Text style={styles.paymentSummaryValue}>Rs {totalPaymentAmount.toLocaleString()}</Text>
+                </View>
+                <View style={styles.paymentSummaryBox}>
+                  <Text style={styles.paymentSummaryLabel}>Last Paid</Text>
+                  <Text style={styles.paymentSummaryValue}>
+                    {lastPayment ? `Rs ${Number(lastPayment.amount || 0).toLocaleString()}` : 'Rs 0'}
+                  </Text>
                 </View>
               </View>
-            ) : dietLoading ? (
-              <ActivityIndicator color={colors.accent} size="large" style={{ marginVertical: 40 }} />
-            ) : (
-              <View>
-                <View style={styles.dietContentHeader}>
-                  <Text style={styles.dietContentTitle}>Diet Summary</Text>
-                </View>
-
-                {/* Configuration Controls Card */}
-                <View style={styles.configControlsCard}>
-                  {/* Row 1: Diet Access */}
-                  <View style={styles.configItem}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <Text style={styles.configItemTitle}>Diet Access</Text>
-                      <Text style={styles.configItemDesc}>Allow member portal diet planning</Text>
-                    </View>
-                    <Switch
-                      value={localDietAccess}
-                      onValueChange={handleToggleDietAccess}
-                      trackColor={{ false: colors.border, true: colors.accent }}
-                      thumbColor={Platform.OS === 'android' ? '#ffffff' : undefined}
-                      disabled={isSoftDeleted}
-                    />
-                  </View>
-                       {/* Row 2: Daily Limit */}
-                  <View style={styles.configItem}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.configItemTitle}>Daily Limit</Text>
-                        {limitUpdating && (
-                          <ActivityIndicator size="small" color={colors.accent} style={{ marginLeft: 8 }} />
-                        )}
-                      </View>
-                      <Text style={styles.configItemDesc}>Maximum plan generations per day</Text>
-                    </View>
-                    <View style={styles.counterContainer}>
-                      <TouchableOpacity
-                        style={[styles.counterBtn, (localDietLimit <= 1 || limitUpdating) && styles.counterBtnDisabled]}
-                        onPress={handleDecrementLimit}
-                        disabled={localDietLimit <= 1 || isSoftDeleted || limitUpdating}
-                        activeOpacity={0.7}
-                      >
-                        <Minus size={14} color={(localDietLimit <= 1 || limitUpdating) ? colors.textMuted : colors.textPrimary} />
-                      </TouchableOpacity>
-                      <Text style={styles.counterValue}>{localDietLimit}</Text>
-                      <TouchableOpacity
-                        style={[styles.counterBtn, (localDietLimit >= 99 || limitUpdating) && styles.counterBtnDisabled]}
-                        onPress={handleIncrementLimit}
-                        disabled={localDietLimit >= 99 || isSoftDeleted || limitUpdating}
-                        activeOpacity={0.7}
-                      >
-                        <Plus size={14} color={(localDietLimit >= 99 || limitUpdating) ? colors.textMuted : colors.textPrimary} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-
-                {(memberDiet && memberDiet.totalCalories) ? (
-                  <View style={styles.dietPlanSummaryContainer}>
-                    {/* Calories Card */}
-                    <View style={styles.dietPlanItem}>
-                      <Text style={styles.dietPlanLabel}>Daily Target Calories</Text>
-                      <Text style={styles.dietPlanValue}>{memberDiet.totalCalories} kcal/day</Text>
-                    </View>
-
-                    {/* Macronutrients Grid */}
-                    <View style={styles.macroSummaryGrid}>
-                      <View style={[styles.macroSummaryBox, { borderColor: '#e74c3c' }]}>
-                        <Text style={[styles.macroSummaryVal, { color: '#e74c3c' }]}>{memberDiet.totalProtein}g</Text>
-                        <Text style={styles.macroSummaryLbl}>Protein</Text>
-                      </View>
-                      <View style={[styles.macroSummaryBox, { borderColor: '#f39c12' }]}>
-                        <Text style={[styles.macroSummaryVal, { color: '#f39c12' }]}>{memberDiet.totalCarb}g</Text>
-                        <Text style={styles.macroSummaryLbl}>Carbs</Text>
-                      </View>
-                      <View style={[styles.macroSummaryBox, { borderColor: '#3498db' }]}>
-                        <Text style={[styles.macroSummaryVal, { color: '#3498db' }]}>{memberDiet.totalFat}g</Text>
-                        <Text style={styles.macroSummaryLbl}>Fats</Text>
-                      </View>
-                    </View>
-
-                    {/* Additional Info fields */}
-                    <View style={styles.fieldWrapAttractive}>
-                      <View style={styles.fieldIconWrap}>
-                        <Activity color={colors.accent} size={20} />
-                      </View>
-                      <View style={styles.fieldContent}>
-                        <Text style={styles.fieldLabelAttractive}>Fitness Goal</Text>
-                        <Text style={styles.fieldValueAttractive}>{getGoalLabel(memberDiet.goal)}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.fieldWrapAttractive}>
-                      <View style={styles.fieldIconWrap}>
-                        <ChefHat color={colors.accent} size={20} />
-                      </View>
-                      <View style={styles.fieldContent}>
-                        <Text style={styles.fieldLabelAttractive}>Diet Style</Text>
-                        <Text style={styles.fieldValueAttractive}>{getDietStyleLabel(memberDiet.dietStyle)}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.fieldWrapAttractive}>
-                      <View style={styles.fieldIconWrap}>
-                        <Salad color={colors.accent} size={20} />
-                      </View>
-                      <View style={styles.fieldContent}>
-                        <Text style={styles.fieldLabelAttractive}>Diet Type</Text>
-                        <Text style={styles.fieldValueAttractive}>{getDietTypeLabel(memberDiet.dietType)}</Text>
-                      </View>
-                    </View>
-                  </View>
+              <View style={styles.historyWrap}>
+                {paymentHistory.length === 0 ? (
+                  <Text style={styles.emptyHistory}>No payment history for this member yet.</Text>
                 ) : (
-                  <View style={styles.noDietPlanContainer}>
-                    <AlertCircle color={colors.textMuted} size={40} style={{ marginBottom: 10 }} />
-                    <Text style={styles.noDietPlanText}>member has not generated diet plan</Text>
+                  paymentHistory.map((payment, idx) => (
+                    <View
+                      key={payment.id || payment._id || `${idx}-${payment.amount}`}
+                      style={[styles.historyRow, idx === paymentHistory.length - 1 && styles.historyRowLast]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.historyDate}>{formatDate(payment.paidOn || payment.createdAt)}</Text>
+                        <Text style={styles.historyMeta}>{(payment.paymentMethod || 'cash').toUpperCase()}</Text>
+                        <Text style={styles.historyMeta}>{(payment.notes || 'payment received')}</Text>
+                      </View>
+                      <Text style={styles.historyAmount}>Rs {Number(payment.amount || 0).toLocaleString()}</Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            </View>
+          </View>
+
+          <View key="diet" style={styles.pagerPage}>
+            <View style={styles.pagerPageInner} onLayout={(event) => handleTabPageLayout('diet', event)}>
+              <View>
+                {!localDietAccess ? (
+                  <View style={styles.dietAccessDisabledContainer}>
+                    <Salad color={colors.textMuted} size={48} style={{ marginBottom: 12 }} />
+                    <Text style={styles.dietAccessDisabledText}>Diet Access is currently disabled</Text>
+                    <Text style={styles.dietAccessDisabledSub}>Enable access to view the member's diet plan details.</Text>
+                    <View style={styles.centeredToggleRow}>
+                      <Text style={styles.toggleRowLabel}>Enable Access</Text>
+                      <Switch
+                        value={localDietAccess}
+                        onValueChange={handleToggleDietAccess}
+                        trackColor={{ false: colors.border, true: colors.accent }}
+                        thumbColor={Platform.OS === 'android' ? '#ffffff' : undefined}
+                        disabled={isSoftDeleted}
+                      />
+                    </View>
+                  </View>
+                ) : dietLoading ? (
+                  <ActivityIndicator color={colors.accent} size="large" style={{ marginVertical: 40 }} />
+                ) : (
+                  <View>
+                    <View style={styles.dietContentHeader}>
+                      <Text style={styles.dietContentTitle}>Diet Summary</Text>
+                    </View>
+
+                    {/* Configuration Controls Card */}
+                    <View style={styles.configControlsCard}>
+                      {/* Row 1: Diet Access */}
+                      <View style={styles.configItem}>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={styles.configItemTitle}>Diet Access</Text>
+                          <Text style={styles.configItemDesc}>Allow member portal diet planning</Text>
+                        </View>
+                        <Switch
+                          value={localDietAccess}
+                          onValueChange={handleToggleDietAccess}
+                          trackColor={{ false: colors.border, true: colors.accent }}
+                          thumbColor={Platform.OS === 'android' ? '#ffffff' : undefined}
+                          disabled={isSoftDeleted}
+                        />
+                      </View>
+                      {/* Row 2: Daily Limit */}
+                      <View style={styles.configItem}>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={styles.configItemTitle}>Daily Limit</Text>
+                            {limitUpdating && (
+                              <ActivityIndicator size="small" color={colors.accent} style={{ marginLeft: 8 }} />
+                            )}
+                          </View>
+                          <Text style={styles.configItemDesc}>Maximum plan generations per day</Text>
+                        </View>
+                        <View style={styles.counterContainer}>
+                          <TouchableOpacity
+                            style={[styles.counterBtn, (localDietLimit <= 1 || limitUpdating) && styles.counterBtnDisabled]}
+                            onPress={handleDecrementLimit}
+                            disabled={localDietLimit <= 1 || isSoftDeleted || limitUpdating}
+                            activeOpacity={0.7}
+                          >
+                            <Minus size={14} color={(localDietLimit <= 1 || limitUpdating) ? colors.textMuted : colors.textPrimary} />
+                          </TouchableOpacity>
+                          <Text style={styles.counterValue}>{localDietLimit}</Text>
+                          <TouchableOpacity
+                            style={[styles.counterBtn, (localDietLimit >= 99 || limitUpdating) && styles.counterBtnDisabled]}
+                            onPress={handleIncrementLimit}
+                            disabled={localDietLimit >= 99 || isSoftDeleted || limitUpdating}
+                            activeOpacity={0.7}
+                          >
+                            <Plus size={14} color={(localDietLimit >= 99 || limitUpdating) ? colors.textMuted : colors.textPrimary} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+
+                    {(memberDiet && memberDiet.totalCalories) ? (
+                      <View style={styles.dietPlanSummaryContainer}>
+                        {/* Calories Card */}
+                        <View style={styles.dietPlanItem}>
+                          <Text style={styles.dietPlanLabel}>Daily Target Calories</Text>
+                          <Text style={styles.dietPlanValue}>{memberDiet.totalCalories} kcal/day</Text>
+                        </View>
+
+                        {/* Macronutrients Grid */}
+                        <View style={styles.macroSummaryGrid}>
+                          <View style={[styles.macroSummaryBox, { borderColor: '#e74c3c' }]}>
+                            <Text style={[styles.macroSummaryVal, { color: '#e74c3c' }]}>{memberDiet.totalProtein}g</Text>
+                            <Text style={styles.macroSummaryLbl}>Protein</Text>
+                          </View>
+                          <View style={[styles.macroSummaryBox, { borderColor: '#f39c12' }]}>
+                            <Text style={[styles.macroSummaryVal, { color: '#f39c12' }]}>{memberDiet.totalCarb}g</Text>
+                            <Text style={styles.macroSummaryLbl}>Carbs</Text>
+                          </View>
+                          <View style={[styles.macroSummaryBox, { borderColor: '#3498db' }]}>
+                            <Text style={[styles.macroSummaryVal, { color: '#3498db' }]}>{memberDiet.totalFat}g</Text>
+                            <Text style={styles.macroSummaryLbl}>Fats</Text>
+                          </View>
+                        </View>
+
+                        {/* Additional Info fields */}
+                        <View style={styles.fieldWrapAttractive}>
+                          <View style={styles.fieldIconWrap}>
+                            <Activity color={colors.accent} size={20} />
+                          </View>
+                          <View style={styles.fieldContent}>
+                            <Text style={styles.fieldLabelAttractive}>Fitness Goal</Text>
+                            <Text style={styles.fieldValueAttractive}>{getGoalLabel(memberDiet.goal)}</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.fieldWrapAttractive}>
+                          <View style={styles.fieldIconWrap}>
+                            <ChefHat color={colors.accent} size={20} />
+                          </View>
+                          <View style={styles.fieldContent}>
+                            <Text style={styles.fieldLabelAttractive}>Diet Style</Text>
+                            <Text style={styles.fieldValueAttractive}>{getDietStyleLabel(memberDiet.dietStyle)}</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.fieldWrapAttractive}>
+                          <View style={styles.fieldIconWrap}>
+                            <Salad color={colors.accent} size={20} />
+                          </View>
+                          <View style={styles.fieldContent}>
+                            <Text style={styles.fieldLabelAttractive}>Diet Type</Text>
+                            <Text style={styles.fieldValueAttractive}>{getDietTypeLabel(memberDiet.dietType)}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.noDietPlanContainer}>
+                        <AlertCircle color={colors.textMuted} size={40} style={{ marginBottom: 10 }} />
+                        <Text style={styles.noDietPlanText}>member has not generated diet plan</Text>
+                      </View>
+                    )}
                   </View>
                 )}
               </View>
-            )}
+            </View>
           </View>
-        )}
-        </Animated.View>
+        </PagerView>
       </View>
 
       <View style={styles.bottomActions}>
@@ -1004,8 +1035,16 @@ Let's keep making gains! 💯`;
       </Modal>
 
 
-      {showRenewSheet && (
-        <View style={styles.renewOverlay}>
+      <Modal
+        visible={showRenewSheet}
+        transparent
+        animationType="fade"
+        onRequestClose={closeRenewSheet}
+      >
+        <KeyboardAvoidingView
+          behavior="padding"
+          style={styles.renewOverlay}
+        >
           <Pressable style={styles.renewBackdrop} onPress={closeRenewSheet} />
           <Animated.View style={[styles.renewSheet, { transform: [{ translateY: renewSheetY }] }]}>
             <RenewMembershipSection
@@ -1027,8 +1066,8 @@ Let's keep making gains! 💯`;
               />
             )}
           </Animated.View>
-        </View>
-      )}
+        </KeyboardAvoidingView>
+      </Modal>
 
 
     </ScrollView>
@@ -1310,34 +1349,46 @@ const getStyles = (colors) =>
     },
     tabsRow: {
       flexDirection: 'row',
-      gap: 24,
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: 9999,
+      padding: 4,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: spacing.md,
     },
     activeTab: {
-      color: colors.textPrimary,
+      color: colors.textInverted,
       fontWeight: '700',
       fontSize: 14,
     },
     inactiveTab: {
-      color: colors.textMuted,
+      color: colors.textSecondary,
       fontWeight: '600',
       fontSize: 14,
     },
     tabButton: {
+      flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingBottom: 6,
+      paddingVertical: 10,
+      borderRadius: 9999,
     },
-    tabUnderline: {
-      height: 3,
-      borderRadius: 3,
-      marginTop: 4,
-      alignSelf: 'stretch',
+    activeTabButton: {
+      backgroundColor: colors.accent,
+      shadowColor: colors.accent,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 4,
+      elevation: 2,
     },
-    tabUnderlineActive: {
-      backgroundColor: colors.textPrimary,
+    pagerView: {
+      width: '100%',
     },
-    tabUnderlineInactive: {
-      backgroundColor: 'transparent',
+    pagerPage: {
+      width: '100%',
+    },
+    pagerPageInner: {
+      width: '100%',
     },
     fieldWrapAttractive: {
       flexDirection: 'row',
@@ -1410,6 +1461,34 @@ const getStyles = (colors) =>
       fontSize: 13,
       opacity: 0.85,
     },
+    paymentSummaryRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginBottom: 12,
+    },
+    paymentSummaryBox: {
+      flex: 1,
+      backgroundColor: `${colors.success}10`,
+      borderWidth: 1,
+      borderColor: `${colors.success}30`,
+      borderRadius: 16,
+      padding: 14,
+    },
+    paymentSummaryLabel: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+      marginBottom: 6,
+      textAlign: 'center',
+    },
+    paymentSummaryValue: {
+      color: colors.textPrimary,
+      fontSize: 18,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
     historyWrap: {
       backgroundColor: colors.surfaceAlt,
       borderRadius: 14,
@@ -1474,10 +1553,6 @@ const getStyles = (colors) =>
     },
     renewSheet: {
       width: '100%',
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
     },
     archivedBanner: {
       flexDirection: 'row',

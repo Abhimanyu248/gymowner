@@ -16,38 +16,38 @@ import { useThemeColors } from '../theme/palette';
 function getPageNumbers(currentPage, totalPages) {
   const pages = [];
   const maxVisiblePages = 5;
-  
+
   if (totalPages <= maxVisiblePages) {
     for (let i = 1; i <= totalPages; i++) {
       pages.push(i);
     }
   } else {
     pages.push(1);
-    
+
     let start = Math.max(2, currentPage - 1);
     let end = Math.min(totalPages - 1, currentPage + 1);
-    
+
     if (currentPage <= 2) {
       end = 4;
     } else if (currentPage >= totalPages - 1) {
       start = totalPages - 3;
     }
-    
+
     if (start > 2) {
       pages.push('...');
     }
-    
+
     for (let i = start; i <= end; i++) {
       pages.push(i);
     }
-    
+
     if (end < totalPages - 1) {
       pages.push('...');
     }
-    
+
     pages.push(totalPages);
   }
-  
+
   return pages;
 }
 
@@ -74,17 +74,17 @@ export default function PaymentsScreen() {
   const customRangeTitle = useMemo(() => {
     const s = new Date(customRevenueStart);
     const e = new Date(customRevenueEnd);
-    s.setHours(0,0,0,0);
-    e.setHours(0,0,0,0);
-    
+    s.setHours(0, 0, 0, 0);
+    e.setHours(0, 0, 0, 0);
+
     if (s.getTime() === e.getTime()) {
       return `Custom: ${s.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
     }
-    
+
     if (s.getDate() === 1 && e.getDate() === new Date(e.getFullYear(), e.getMonth() + 1, 0).getDate() && s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
       return `${s.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`;
     }
-    
+
     return `${s.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} - ${e.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
   }, [customRevenueStart, customRevenueEnd]);
 
@@ -101,6 +101,8 @@ export default function PaymentsScreen() {
   }, [dateFilter, methodFilter, customDate]);
 
   const [alertConfig, setAlertConfig] = useState({ visible: false });
+  const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('');
 
   const showAlert = (title, message, buttons = [{ text: 'OK' }], type = 'info') => {
     setAlertConfig({ visible: true, title, message, buttons, type });
@@ -118,12 +120,16 @@ export default function PaymentsScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            setLoading(true);
+            setLoadingText('Deleting payment...');
             try {
               await deletePayment(paymentId);
               setExpandedPaymentId(null);
+              setLoading(false);
               setTimeout(() => showAlert('Deleted', 'Payment record deleted successfully.', [{ text: 'OK' }], 'success'), 320);
             } catch (err) {
-              showAlert('Error', err.message || 'Failed to delete payment.', [{ text: 'OK' }], 'error');
+              setLoading(false);
+              setTimeout(() => showAlert('Error', err.message || 'Failed to delete payment.', [{ text: 'OK' }], 'error'), 320);
             }
           },
         },
@@ -140,7 +146,7 @@ export default function PaymentsScreen() {
 
   const filteredPayments = useMemo(() => {
     let result = methodFilteredPayments;
-    
+
     if (dateFilter !== 'all') {
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -243,27 +249,27 @@ export default function PaymentsScreen() {
       if (planRevenueFilter === 'week' && paidOn < startOfWeek) return;
       if (planRevenueFilter === 'month' && paidOn < startOfMonth) return;
 
-      let planName = 'Unknown Plan';
-      
+      let planName = p?.memberSnapshot?.planName || 'Unknown Plan';
+
       let memberId = p?.memberId;
       if (typeof memberId === 'object' && memberId !== null) {
-          memberId = memberId.id || memberId._id;
+        memberId = memberId.id || memberId._id;
       }
       const memberObj = members.find(m => (m.id || m._id) === memberId);
-      
+
       if (memberObj) {
         let pId = memberObj.planId;
         if (typeof pId === 'object' && pId !== null) {
-           if (pId.name) {
-               planName = pId.name;
-           } else {
-               pId = pId.id || pId._id;
-               const planObj = plans.find(pl => (pl.id || pl._id) === pId);
-               if (planObj) planName = planObj.name;
-           }
+          if (pId.name) {
+            planName = pId.name;
+          } else {
+            pId = pId.id || pId._id;
+            const planObj = plans.find(pl => (pl.id || pl._id) === pId);
+            if (planObj) planName = planObj.name;
+          }
         } else {
-           const planObj = plans.find(pl => (pl.id || pl._id) === pId);
-           if (planObj) planName = planObj.name;
+          const planObj = plans.find(pl => (pl.id || pl._id) === pId);
+          if (planObj) planName = planObj.name;
         }
       }
 
@@ -299,12 +305,12 @@ export default function PaymentsScreen() {
         {/* Mode selector and info row */}
         <View style={styles.paginationInfoRow}>
           <Text style={styles.paginationInfoText}>
-            {isPaginated 
+            {isPaginated
               ? `Showing ${startItem}-${endItem} of ${filteredPayments.length}`
               : `Showing all ${filteredPayments.length}`
             }
           </Text>
-          
+
           {/* Segmented Mode Selector */}
           <View style={styles.modeSelector}>
             <TouchableOpacity
@@ -386,9 +392,9 @@ export default function PaymentsScreen() {
           const isExpanded = expandedPaymentId === (p.id || p._id);
           const memberObj = p.memberId || {};
           const memberId = memberObj._id || memberObj.id;
-          
+
           return (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
                 styles.paymentCard,
                 isExpanded && styles.expandedItem
@@ -399,7 +405,7 @@ export default function PaymentsScreen() {
               <View style={{ width: '100%' }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.payeeName}>{memberObj.name || 'Deleted Member'}</Text>
+                    <Text style={styles.payeeName}>{memberObj.name || p.memberSnapshot?.name || 'Deleted Member'}</Text>
                     <Text style={styles.payMeta}>{p.paymentMethod?.toUpperCase()} - {formatDate(p.paidOn || p.createdAt)}</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end', flexDirection: 'row' }}>
@@ -407,9 +413,9 @@ export default function PaymentsScreen() {
                     {isExpanded ? <ChevronUp size={20} color={colors.textMuted} style={{ marginLeft: 8 }} /> : <ChevronDown size={20} color={colors.textMuted} style={{ marginLeft: 8 }} />}
                   </View>
                 </View>
-                
-                {p.notes && !isExpanded ? <Text style={styles.payNotes} numberOfLines={1}>{p.notes}</Text> : null}
-                
+
+                {p.notes && !isExpanded ? <Text style={styles.payNotes} numberOfLines={1}>{p.notes.split('-')[0].trim()}</Text> : null}
+
                 {isExpanded && (
                   <View style={styles.expandedContent}>
                     {p.notes ? (
@@ -418,10 +424,10 @@ export default function PaymentsScreen() {
                         <Text style={styles.expandedValue}>{p.notes}</Text>
                       </View>
                     ) : null}
-                    
+
                     <View style={{ flexDirection: 'row', marginTop: spacing.xs }}>
                       {memberId && (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={[styles.viewProfileBtn, { marginTop: 0 }]}
                           onPress={() => navigation.navigate('MemberDetail', { memberId })}
                         >
@@ -456,7 +462,7 @@ export default function PaymentsScreen() {
                 { value: 'all', label: 'All' },
                 { value: 'cash', label: 'Cash' },
                 { value: 'upi', label: 'UPI' },
-              ].map((opt, idx) => ( 
+              ].map((opt, idx) => (
                 <TouchableOpacity
                   key={opt.value}
                   style={[
@@ -474,7 +480,7 @@ export default function PaymentsScreen() {
             </View>
             <View style={styles.metricsRow}>
               <MetricCard title="Today" value={formatAmount(summary.today)} color={colors.secondary} />
-              <MetricCard title="This Week" value={formatAmount(summary.week)} color={colors.primary } />
+              <MetricCard title="This Week" value={formatAmount(summary.week)} color={colors.primary} />
             </View>
             <View style={styles.metricsRow}>
               <MetricCard title="This Month" value={formatAmount(summary.month)} color={colors.primary} />
@@ -482,10 +488,10 @@ export default function PaymentsScreen() {
             </View>
             <View style={styles.metricsRow}>
               <TouchableOpacity style={{ flex: 1, flexDirection: 'row' }} activeOpacity={0.8} onPress={() => setShowCustomRevenueModal(true)}>
-                <MetricCard 
-                  title={customRangeTitle} 
-                  value={formatAmount(summary.customRange)} 
-                  color={colors.success} 
+                <MetricCard
+                  title={customRangeTitle}
+                  value={formatAmount(summary.customRange)}
+                  color={colors.success}
                   icon={<Calendar size={18} color={colors.success} />}
                 />
               </TouchableOpacity>
@@ -537,11 +543,11 @@ export default function PaymentsScreen() {
               <TouchableOpacity style={styles.filterBtn} onPress={() => setShowDateFilterModal(true)}>
                 <Filter size={14} color={colors.accent} style={{ marginRight: 6 }} />
                 <Text style={styles.filterBtnText}>
-                  {dateFilter === 'all' ? 'All Time' : 
-                   dateFilter === 'custom' ? formatDate(customDate) : 
-                   dateFilter === 'week' ? 'This Week' : 
-                   dateFilter === 'month' ? 'This Month' : 
-                   dateFilter === 'year' ? 'This Year' : 'Today'}
+                  {dateFilter === 'all' ? 'All Time' :
+                    dateFilter === 'custom' ? formatDate(customDate) :
+                      dateFilter === 'week' ? 'This Week' :
+                        dateFilter === 'month' ? 'This Month' :
+                          dateFilter === 'year' ? 'This Year' : 'Today'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -559,7 +565,7 @@ export default function PaymentsScreen() {
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowDateFilterModal(false)}>
           <View style={styles.filterMenuContainer}>
             <Text style={styles.filterMenuTitle}>Filter by Date</Text>
-            
+
             {[
               { value: 'all', label: 'All Time' },
               { value: 'today', label: 'Today' },
@@ -568,8 +574,8 @@ export default function PaymentsScreen() {
               { value: 'year', label: 'This Year' },
               { value: 'custom', label: 'Custom Date...' },
             ].map(opt => (
-              <TouchableOpacity 
-                key={opt.value} 
+              <TouchableOpacity
+                key={opt.value}
                 style={[styles.filterOption, dateFilter === opt.value && styles.filterOptionActive]}
                 onPress={() => {
                   if (opt.value === 'custom') {
@@ -584,7 +590,7 @@ export default function PaymentsScreen() {
                   {opt.label}
                 </Text>
                 {dateFilter === opt.value && opt.value === 'custom' && (
-                   <Text style={styles.customDateText}>{formatDate(customDate)}</Text>
+                  <Text style={styles.customDateText}>{formatDate(customDate)}</Text>
                 )}
               </TouchableOpacity>
             ))}
@@ -612,7 +618,7 @@ export default function PaymentsScreen() {
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowCustomRevenueModal(false)}>
           <View style={[styles.filterMenuContainer, { backgroundColor: colors.surface }]}>
             <Text style={styles.filterMenuTitle}>Select Revenue Period</Text>
-            
+
             <Text style={styles.label}>Start Date</Text>
             <TouchableOpacity style={styles.input} onPress={() => setShowStartPicker(true)}>
               <Text style={{ color: colors.textPrimary, marginTop: 12 }}>{formatDate(customRevenueStart)}</Text>
@@ -663,6 +669,12 @@ export default function PaymentsScreen() {
         type={alertConfig.type}
         onClose={hideAlert}
       />
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={colors.accent} />
+          {loadingText ? <Text style={styles.loadingMsg}>{loadingText}</Text> : null}
+        </View>
+      )}
     </View>
   );
 }
@@ -683,7 +695,7 @@ const getStyles = (colors) => StyleSheet.create({
     marginBottom: spacing.md,
   },
   pageTitle: {
-   fontSize: 22,
+    fontSize: 22,
     fontWeight: '800',
     color: colors.textPrimary,
     marginBottom: spacing.md,
@@ -1153,5 +1165,17 @@ const getStyles = (colors) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: colors.textMuted,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  loadingMsg: {
+    color: '#fff',
+    marginTop: spacing.md,
+    fontWeight: '600',
   },
 });

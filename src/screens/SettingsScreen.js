@@ -227,6 +227,7 @@ export default function SettingsScreen({ navigation }) {
       return;
     }
     setIsUpdating(true);
+    let newlyUploadedImageUrl = null;
     try {
       let uploadedImageUrl = profileForm.image;
 
@@ -241,8 +242,10 @@ export default function SettingsScreen({ navigation }) {
 
           const uploadRes = await api.uploadImage(compressedUri);
           uploadedImageUrl = uploadRes.publicUrl;
+          newlyUploadedImageUrl = uploadedImageUrl;
         } catch (uploadErr) {
           console.warn('Failed to upload logo image:', uploadErr);
+          throw new Error('Failed to upload profile image. Please check your connection and try again.');
         }
       }
 
@@ -259,6 +262,11 @@ export default function SettingsScreen({ navigation }) {
       setShowEditProfileModal(false);
       showAlert('Success', 'Profile details updated.', 'success');
     } catch (err) {
+      if (newlyUploadedImageUrl) {
+        api.deleteUploadedImage(newlyUploadedImageUrl).catch((cleanupErr) => {
+          console.warn('Failed to clean up uploaded profile image after save failure:', cleanupErr);
+        });
+      }
       showAlert('Error', err.message || 'Failed to update profile', 'error');
     } finally {
       setIsUpdating(false);

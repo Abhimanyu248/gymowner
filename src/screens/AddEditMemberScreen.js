@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Linking,
   Switch,
+  KeyboardAvoidingView,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -37,8 +38,7 @@ export default function AddEditMemberScreen({ route, navigation }) {
   } = useAppStore();
   const colors = useThemeColors();
   const styles = getStyles(colors);
-  const placeholderColor =
-    colors.background === "#141A22" ? "#FFFFFF" : colors.textMuted;
+  const placeholderColor = colors.textMuted;
 
   const existingMember = memberId
     ? members.find((m) => m.id === memberId)
@@ -64,6 +64,8 @@ export default function AddEditMemberScreen({ route, navigation }) {
       : new Date(),
     paymentMethod: "cash",
     hasDietAccess: existingMember?.hasDietAccess || false,
+    discount: "",
+    notes: "",
   });
 
   const hasSaved = React.useRef(false);
@@ -292,6 +294,7 @@ export default function AddEditMemberScreen({ route, navigation }) {
     setLoading(true);
 
     let uploadedImageUrl = form.photo;
+    let newlyUploadedImageUrl = null;
 
     // Check if the photo is a local URI and upload it to Supabase first
     if (
@@ -319,6 +322,7 @@ export default function AddEditMemberScreen({ route, navigation }) {
         // Step 2: Upload the compressed image to backend
         const uploadRes = await api.uploadImage(compressedUri);
         uploadedImageUrl = uploadRes.publicUrl;
+        newlyUploadedImageUrl = uploadedImageUrl;
       } catch (uploadErr) {
         console.error("Failed to upload profile photo:", uploadErr);
         setLoading(false);
@@ -368,6 +372,10 @@ export default function AddEditMemberScreen({ route, navigation }) {
         calculatedExpiryDate.setHours(23, 59, 59, 999);
       }
 
+      const basePrice = selectedPlan ? Number(selectedPlan.amount || selectedPlan.price || 0) : 0;
+      const discountVal = Number(form.discount) || 0;
+      const finalAmount = Math.max(0, basePrice - discountVal);
+
       payload = {
         name: form.name ? form.name.trim() : "",
         phone: cleanedPhone,
@@ -384,6 +392,8 @@ export default function AddEditMemberScreen({ route, navigation }) {
         expiryDate: calculatedExpiryDate.toISOString(),
         paymentMethod: form.paymentMethod,
         hasDietAccess: form.hasDietAccess,
+        amount: finalAmount,
+        notes: form.notes ? form.notes.trim() : "",
       };
     }
 
@@ -444,6 +454,11 @@ export default function AddEditMemberScreen({ route, navigation }) {
       }
     } catch (err) {
       hasSaved.current = false;
+      if (newlyUploadedImageUrl) {
+        api.deleteUploadedImage(newlyUploadedImageUrl).catch((cleanupErr) => {
+          console.warn("Failed to clean up uploaded profile photo after save failure:", cleanupErr);
+        });
+      }
       let errorMessage = err.message || "Failed to save member";
       if (errorMessage.includes("E11000") || errorMessage.toLowerCase().includes("duplicate")) {
         errorMessage = "A member with this phone number is already registered.";
@@ -460,10 +475,15 @@ export default function AddEditMemberScreen({ route, navigation }) {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      showsHorizontalScrollIndicator={false}
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior="padding"
+      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+    >
+      <ScrollView
+        style={styles.container}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingBottom: spacing.xxl }}
       refreshControl={
         <RefreshControl
@@ -691,12 +711,26 @@ export default function AddEditMemberScreen({ route, navigation }) {
                 </TouchableOpacity>
               ))
             )}
+
+            {form.planId ? (
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={styles.label}>Discount (Rs)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter discount amount (e.g. 500)"
+                  placeholderTextColor={placeholderColor}
+                  keyboardType="numeric"
+                  value={form.discount}
+                  onChangeText={(val) => updateForm("discount", val)}
+                />
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Payment Method</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              {["cash", "upi", "bank_transfer"].map(
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: spacing.md }}>
+              {["cash", "upi"].map(
                 (method) => (
                   <TouchableOpacity
                     key={method}
@@ -724,6 +758,15 @@ export default function AddEditMemberScreen({ route, navigation }) {
                 ),
               )}
             </View>
+
+            <Text style={styles.label}>Payment Notes</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter payment notes (e.g. UPI ID)"
+              placeholderTextColor={placeholderColor}
+              value={form.notes}
+              onChangeText={(val) => updateForm("notes", val)}
+            />
           </View>
         </>
       )}
@@ -743,7 +786,8 @@ export default function AddEditMemberScreen({ route, navigation }) {
         type={alertConfig.type}
         onClose={hideAlert}
       />
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -802,6 +846,7 @@ const getStyles = (colors) =>
       height: 44,
       marginBottom: spacing.md,
       color: colors.textPrimary,
+      backgroundColor: colors.surfaceAlt,
     },
     dateInput: {
       borderWidth: 1,
@@ -811,6 +856,7 @@ const getStyles = (colors) =>
       height: 44,
       marginBottom: spacing.md,
       justifyContent: "center",
+      backgroundColor: colors.surfaceAlt,
     },
     dateText: {
       color: colors.textPrimary,

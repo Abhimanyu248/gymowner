@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // local server url
-// const API_BASE_URL = 'http://10.59.202.148:3000/api';
+const API_BASE_URL = 'http://10.59.202.148:3000/api';
 //online server url
-const API_BASE_URL = 'https://backend-txff.onrender.com/api';
+// const API_BASE_URL = 'https://backend-txff.onrender.com/api';
+// const API_BASE_URL = 'https://gymprobackend.vercel.app/api';
 const AUTH_TOKEN_KEY = 'auth_token';
 const AUTH_USER_KEY = 'auth_user';
 
@@ -57,9 +58,11 @@ class ApiService {
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutDuration = options.timeout !== undefined ? options.timeout : 10000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
-    const response = await fetch(url, { ...options, headers, signal: controller.signal }).catch(err => {
+    const { timeout, ...fetchOptions } = options;
+    const response = await fetch(url, { ...fetchOptions, headers, signal: controller.signal }).catch(err => {
       clearTimeout(timeoutId);
       // fetch completely failed (e.g. no internet, backend server down/unreachable, or timeout)
       try {
@@ -71,16 +74,16 @@ class ApiService {
       throw new Error('NETWORK_ERROR');
     });
     clearTimeout(timeoutId);
-    
+
     // Treat gateway errors as network errors
     if (response.status === 502 || response.status === 503 || response.status === 504) {
       try {
         const { useAppStore } = require('../store/useAppStore');
         useAppStore.getState().setNetworkError(true, 'Backend Server Unreachable');
-      } catch (e) {}
+      } catch (e) { }
       throw new Error('NETWORK_ERROR');
     }
-    
+
     // Parse JSON safely
     let data;
     const text = await response.text();
@@ -278,11 +281,12 @@ class ApiService {
       method: 'POST',
     });
   }
-  
+
   async restoreBackup(data) {
     return this.request('/backup/restore', {
       method: 'POST',
       body: JSON.stringify(data),
+      timeout: 100000, 
     });
   }
 
@@ -372,11 +376,18 @@ class ApiService {
       try {
         const parsed = JSON.parse(text);
         msg = parsed.message || parsed.error || msg;
-      } catch (e) {}
+      } catch (e) { }
       throw new Error(msg);
     }
 
     return response.json();
+  }
+
+  async deleteUploadedImage(imageUrl) {
+    return this.request('/upload/image', {
+      method: 'DELETE',
+      body: JSON.stringify({ imageUrl }),
+    });
   }
 
   // Diet Endpoints

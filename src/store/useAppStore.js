@@ -5,6 +5,8 @@ import NetInfo from '@react-native-community/netinfo';
 import { api } from '../utils/api';
 
 const THEME_MODE_KEY = 'theme_mode';
+const PLANS_CACHE_KEY = 'cached_plans';
+const STATS_CACHE_KEY = 'cached_dashboard_stats';
 
 export const useAppStore = create((set, get) => ({
   // Auth State
@@ -42,6 +44,7 @@ export const useAppStore = create((set, get) => ({
   },
 
   init: async () => {
+    const startTime = Date.now();
     try {
       // Setup network listener
       NetInfo.addEventListener(state => {
@@ -62,11 +65,45 @@ export const useAppStore = create((set, get) => ({
       if (token) {
         const storedUser = await api.getStoredUser();
         set({ isAuthenticated: true, user: storedUser || null });
-        await get().fetchAppData();
+
+        // Load cached plans and stats
+        let hasCache = false;
+        try {
+          const [cachedPlans, cachedStats] = await Promise.all([
+            AsyncStorage.getItem(PLANS_CACHE_KEY),
+            AsyncStorage.getItem(STATS_CACHE_KEY),
+          ]);
+          if (cachedPlans) {
+            set({ plans: JSON.parse(cachedPlans) });
+            hasCache = true;
+          }
+          if (cachedStats) {
+            set({ dashboardStats: JSON.parse(cachedStats) });
+            hasCache = true;
+          }
+        } catch (cacheErr) {
+          console.error('Error loading cached plans/stats:', cacheErr);
+        }
+
+        // Fetch data silently if we have cached plans or stats
+        await get().fetchAppData(hasCache);
+
+        // Run automatic backup silently in background 3 seconds after startup data is loaded
+        setTimeout(() => {
+          const { AutoBackupManager } = require('../utils/autoBackup');
+          AutoBackupManager.runAutomaticBackup().catch((err) => {
+            alert('[AutoBackup] Background weekly backup task failed.');
+          });
+        }, 3000);
       }
     } catch (e) {
       console.error(e);
     } finally {
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, 2000 - elapsedTime);
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      }
       set({ isHydrating: false });
     }
   },
@@ -76,6 +113,15 @@ export const useAppStore = create((set, get) => ({
       const user = await api.login(email, password);
       set({ isAuthenticated: true, user });
       await get().fetchAppData();
+
+      // Run automatic backup silently in background 3 seconds after login data is loaded
+      setTimeout(() => {
+        const { AutoBackupManager } = require('../utils/autoBackup');
+        AutoBackupManager.runAutomaticBackup().catch((err) => {
+          alert('[AutoBackup] Background weekly backup task failed.');
+        });
+      }, 3000);
+
       return true;
     } catch (e) {
       throw e;
@@ -84,7 +130,19 @@ export const useAppStore = create((set, get) => ({
 
   logout: () => {
     api.logout();
-    set({ isAuthenticated: false, user: null, members: [], plans: [], payments: [] });
+    AsyncStorage.multiRemove([PLANS_CACHE_KEY, STATS_CACHE_KEY]).catch((e) => {
+      console.error('Failed to clear cached plans/stats on logout:', e);
+    });
+    set({
+      isAuthenticated: false,
+      user: null,
+      members: [],
+      deletedMembers: [],
+      plans: [],
+      payments: [],
+      dashboardStats: null,
+      paymentStats: null,
+    });
   },
 
   setThemeMode: (mode) => {
@@ -128,6 +186,11 @@ export const useAppStore = create((set, get) => ({
 
       set({ members: mappedMembers, deletedMembers: mappedDeleted, plans: mappedPlans });
 
+      // Persist plans cache
+      AsyncStorage.setItem(PLANS_CACHE_KEY, JSON.stringify(mappedPlans)).catch(e => {
+        console.error('Failed to cache plans:', e);
+      });
+
       // Fetch supplementary data without blocking
       const [statsData, payStats, paymentsData] = await Promise.all([
         api.getDashboardStats().catch(e => { console.error('dashboard stats error:', e); return null; }),
@@ -143,6 +206,13 @@ export const useAppStore = create((set, get) => ({
         payments: mappedPayments,
         isLoadingData: false,
       });
+
+      // Persist stats cache
+      if (statsData) {
+        AsyncStorage.setItem(STATS_CACHE_KEY, JSON.stringify(statsData)).catch(e => {
+          console.error('Failed to cache stats:', e);
+        });
+      }
     } catch (e) {
       console.error('fetchAppData error:', e);
       set({ error: e.message, isLoadingData: false });
@@ -153,10 +223,12 @@ export const useAppStore = create((set, get) => ({
   addMember: async (payload) => {
     const member = await api.createMember(payload);
     const mapped = { ...member, id: member._id || member.id };
+
     set(state => ({
       members: [mapped, ...state.members]
     }));
-    await get().fetchStats();
+
+    await get().fetchAppData(true);
     return mapped;
   },
   
@@ -166,23 +238,23 @@ export const useAppStore = create((set, get) => ({
     set(state => ({
       members: state.members.map(m => (m.id === id || m._id === id ? mapped : m))
     }));
-    await get().fetchStats();
+    await get().fetchAppData(true);
   },
 
   deleteMember: async (id, hard = false) => {
     await api.deleteMember(id, hard);
     set(state => {
-      const deletedMember = state.members.find(m => m.id === id || m._id === id);
+      const deletedMember = state.members.find(m => m.id === id || m._id === id) || state.deletedMembers.find(m => m.id === id || m._id === id);
       const updatedMembers = state.members.filter(m => m.id !== id && m._id !== id);
       const updatedDeleted = hard 
-        ? state.deletedMembers 
-        : (deletedMember ? [{ ...deletedMember, status: 'deleted' }, ...state.deletedMembers] : state.deletedMembers);
+        ? state.deletedMembers.filter(m => m.id !== id && m._id !== id) 
+        : (deletedMember ? [{ ...deletedMember, status: 'deleted' }, ...state.deletedMembers.filter(m => m.id !== id && m._id !== id)] : state.deletedMembers);
       return {
         members: updatedMembers,
         deletedMembers: updatedDeleted,
       };
     });
-    await get().fetchStats();
+    await get().fetchAppData(true);
   },
 
   restoreMember: async (id) => {
@@ -192,7 +264,7 @@ export const useAppStore = create((set, get) => ({
       deletedMembers: state.deletedMembers.filter(m => m.id !== id && m._id !== id),
       members: [mapped, ...state.members]
     }));
-    await get().fetchStats();
+    await get().fetchAppData(true);
   },
 
   getMemberCredentials: async (id) => {
@@ -203,24 +275,38 @@ export const useAppStore = create((set, get) => ({
   addPlan: async (payload) => {
     const plan = await api.createPlan(payload);
     const mapped = { ...plan, id: plan._id || plan.id };
-    set(state => ({
-      plans: [mapped, ...state.plans]
-    }));
+    set(state => {
+      const updatedPlans = [mapped, ...state.plans];
+      AsyncStorage.setItem(PLANS_CACHE_KEY, JSON.stringify(updatedPlans)).catch(e => {
+        console.error('Failed to cache plans after add:', e);
+      });
+      return { plans: updatedPlans };
+    });
   },
 
   updatePlan: async (id, payload) => {
     const updated = await api.updatePlan(id, payload);
     const mapped = { ...updated, id: updated._id || updated.id };
-    set(state => ({
-      plans: state.plans.map(p => (p.id === id || p._id === id ? mapped : p))
-    }));
+    set(state => {
+      const updatedPlans = state.plans.map(p => (p.id === id || p._id === id ? mapped : p));
+      AsyncStorage.setItem(PLANS_CACHE_KEY, JSON.stringify(updatedPlans)).catch(e => {
+        console.error('Failed to cache plans after update:', e);
+      });
+      return { plans: updatedPlans };
+    });
+    await get().fetchAppData(true);
   },
 
   deletePlan: async (id) => {
     await api.deletePlan(id);
-    set(state => ({
-      plans: state.plans.filter(p => p.id !== id && p._id !== id)
-    }));
+    set(state => {
+      const updatedPlans = state.plans.filter(p => p.id !== id && p._id !== id);
+      AsyncStorage.setItem(PLANS_CACHE_KEY, JSON.stringify(updatedPlans)).catch(e => {
+        console.error('Failed to cache plans after delete:', e);
+      });
+      return { plans: updatedPlans };
+    });
+    await get().fetchAppData(true);
   },
 
   // Payment Operations
@@ -230,7 +316,7 @@ export const useAppStore = create((set, get) => ({
     set(state => ({
       payments: [mapped, ...state.payments]
     }));
-    await get().fetchStats();
+    await get().fetchAppData(true);
   },
 
   deletePayment: async (id) => {
@@ -238,7 +324,7 @@ export const useAppStore = create((set, get) => ({
     set(state => ({
       payments: state.payments.filter(p => p.id !== id && p._id !== id)
     }));
-    await get().fetchStats();
+    await get().fetchAppData(true);
   },
 
   // Notification Operations

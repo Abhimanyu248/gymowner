@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { useAppStore } from '../store/useAppStore';
 import MemberCard from '../components/MemberCard';
 import { radius, spacing, shadows } from '../theme/theme';
@@ -408,6 +409,8 @@ export default function MembersScreen({ navigation }) {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, filter, filterStartDate, filterEndDate, filterExpiryDays, filterBatch, sortKey]);
+
+
 
   const hasActiveSort = !!sortKey;
   const hasActiveFilter = !!filterStartDate || !!filterEndDate || !!filterExpiryDays || !!filterBatch;

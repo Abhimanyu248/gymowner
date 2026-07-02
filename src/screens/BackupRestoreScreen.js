@@ -13,7 +13,7 @@ import { Download, Upload, ShieldCheck, Database, FolderEdit } from 'lucide-reac
 import { api } from '../utils/api';
 
 export default function BackupRestoreScreen() {
-  const { members, plans, payments, user, fetchAppData } = useAppStore();
+  const { members, deletedMembers, plans, payments, user, fetchAppData } = useAppStore();
   const colors = useThemeColors();
   const styles = getStyles(colors);
   
@@ -80,7 +80,8 @@ export default function BackupRestoreScreen() {
 
   // ── BACKUP (JSON Format) ──────────────────────────────────────────────
   const handleBackup = async () => {
-    if(plans.length === 0 || members.length === 0 || payments.length === 0){
+    const totalMembers = members.length + (deletedMembers?.length || 0);
+    if(plans.length === 0 || totalMembers === 0 || payments.length === 0){
       showAlert('No Data', 'Please add some data (plans, members, payments) before creating a backup.', [{ text: 'OK' }], 'warning');
       return;
     }
@@ -95,7 +96,7 @@ export default function BackupRestoreScreen() {
         userEmail: user?.email,
         data: {
           plans,
-          members,
+          members: [...members, ...(deletedMembers || [])],
           payments,
         },
       };
@@ -149,7 +150,7 @@ export default function BackupRestoreScreen() {
 
           showAlert(
             'Backup Created',
-            `Backup successfully saved as "${fileName}" in your selected folder.\nSaved: ${members.length} members, ${plans.length} plans, and ${payments.length} payments.`,
+            `Backup successfully saved as "${fileName}" in your selected folder.\nSaved: ${totalMembers} members, ${plans.length} plans, and ${payments.length} payments.`,
             openButtons,
             'download'
           );
@@ -176,7 +177,7 @@ export default function BackupRestoreScreen() {
 
           showAlert(
             'Backup Created',
-            `Backup successfully saved as "${fileName}" in your selected folder.\nSaved: ${members.length} members, ${plans.length} plans, and ${payments.length} payments.`,
+            `Backup successfully saved as "${fileName}" in your selected folder.\nSaved: ${totalMembers} members, ${plans.length} plans, and ${payments.length} payments.`,
             openButtons,
             'download'
           );
@@ -207,7 +208,7 @@ export default function BackupRestoreScreen() {
           });
           showAlert(
             'Backup Created',
-            `Backup saved with ${members.length} members, ${plans.length} plans, and ${payments.length} payments.`,
+            `Backup saved with ${totalMembers} members, ${plans.length} plans, and ${payments.length} payments.`,
             openButtons,
             'success'
           );
@@ -326,7 +327,7 @@ export default function BackupRestoreScreen() {
           <Text style={styles.statLabel}>Current Data:</Text>
         </View>
         <View style={styles.statRow}>
-          <Text style={styles.statText}>{members.length} Members</Text>
+          <Text style={styles.statText}>{members.length + (deletedMembers?.length || 0)} Members</Text>
           <Text style={styles.statText}>{plans.length} Plans</Text>
           <Text style={styles.statText}>{payments.length} Payments</Text>
         </View>

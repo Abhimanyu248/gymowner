@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { Text, TouchableOpacity, View, StyleSheet, TextInput } from 'react-native';
 import { ChevronLeft } from 'lucide-react-native';
 import { useThemeColors } from '../theme/palette';
 import { radius, spacing, typography } from '../theme/theme';
@@ -54,7 +54,7 @@ export default function RenewMembershipSection({
 
       <Text style={styles.fieldLabel}>Payment Method</Text>
       <View style={styles.membershipRow}>
-        {['cash', 'card', 'upi'].map((method) => {
+        {['cash', 'upi'].map((method) => {
           const active = renewForm.paymentMethod === method;
           return (
             <TouchableOpacity
@@ -70,6 +70,25 @@ export default function RenewMembershipSection({
           );
         })}
       </View>
+
+      <Text style={styles.fieldLabel}>Discount (Rs)</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Enter discount amount (e.g. 500)"
+        placeholderTextColor={colors.textMuted}
+        keyboardType="numeric"
+        value={renewForm.discount}
+        onChangeText={(val) => onChange('discount', val)}
+      />
+
+      <Text style={styles.fieldLabel}>Notes</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Enter payment notes (e.g. Reference ID)"
+        placeholderTextColor={colors.textMuted}
+        value={renewForm.notes}
+        onChangeText={(val) => onChange('notes', val)}
+      />
 
       {renewError ? <Text style={styles.errorText}>{renewError}</Text> : null}
 
@@ -191,6 +210,17 @@ const getStyles = (colors) =>
       color: '#FFFFFF',
       fontWeight: '800',
       fontSize: 16,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.md,
+      height: 44,
+      marginTop: 4,
+      marginBottom: spacing.sm,
+      color: colors.textPrimary,
+      backgroundColor: colors.surfaceAlt,
     },
   });
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
 import Button from '../components/Button';
 import CustomAlert from '../components/CustomAlert';
@@ -7,13 +7,14 @@ import { radius, spacing, typography } from '../theme/theme';
 import { useThemeColors } from '../theme/palette';
 
 export default function PlansScreen() {
-  const { plans, addPlan, updatePlan, deletePlan, isLoadingData, fetchAppData } = useAppStore();
+  const { plans, members, addPlan, updatePlan, deletePlan, isLoadingData, fetchAppData } = useAppStore();
   const colors = useThemeColors();
   const styles = getStyles(colors);
-  
+
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: '', durationMonths: '', amount: '' });
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('');
   const [error, setError] = useState('');
   const [alertConfig, setAlertConfig] = useState({ visible: false });
 
@@ -40,16 +41,61 @@ export default function PlansScreen() {
   };
 
   const handleDelete = (plan) => {
+    const planId = plan.id || plan._id;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const activeAssignedMembers = (members || []).filter((member) => {
+      const memberPlan = member.planId;
+      const memberPlanId = typeof memberPlan === 'object' && memberPlan !== null
+        ? memberPlan.id || memberPlan._id
+        : memberPlan;
+      const expiryDate = member.expiryDate ? new Date(member.expiryDate) : null;
+      const isNotDeleted = member.status !== 'deleted';
+      const isMembershipActive =
+        expiryDate && !Number.isNaN(expiryDate.getTime()) && expiryDate >= today;
+
+      return String(memberPlanId) === String(planId) && isNotDeleted && isMembershipActive;
+    });
+
+    if (activeAssignedMembers.length > 0) {
+      showAlert(
+        'Plan In Use',
+        `Cannot delete this plan because it is assigned to ${activeAssignedMembers.length} active member${activeAssignedMembers.length === 1 ? '' : 's'}. Reassign those active members before deleting the plan.`,
+        [{ text: 'OK' }],
+        'warning',
+      );
+      return;
+    }
+
     showAlert('Delete Plan', `Are you sure you want to delete ${plan.name}?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try {
-          await deletePlan(plan.id);
-          setTimeout(() => showAlert('Success', 'Plan deleted successfully!', [{ text: 'OK' }], 'success'), 320);
-        } catch (err) {
-          showAlert('Error', err.message, [{ text: 'OK' }], 'error');
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          setLoading(true);
+          setLoadingText('Deleting plan...');
+          try {
+            await deletePlan(planId);
+            setLoading(false);
+            setTimeout(() => showAlert('Success', 'Plan deleted successfully!', [{ text: 'OK' }], 'success'), 320);
+          } catch (err) {
+            setLoading(false);
+            const message = err.message || 'Failed to delete plan';
+            const isBlockedByActiveMembers =
+              message.toLowerCase().includes('active member') ||
+              message.toLowerCase().includes('reassign those active members');
+
+            setTimeout(() => {
+              showAlert(
+                isBlockedByActiveMembers ? 'Plan In Use' : 'Error',
+                message,
+                [{ text: 'OK' }],
+                isBlockedByActiveMembers ? 'warning' : 'error',
+              );
+            }, 320);
+          }
         }
-      }}
+      }
     ], 'delete');
   };
 
@@ -89,14 +135,15 @@ export default function PlansScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: spacing.xxl }}
-      refreshControl={<RefreshControl refreshing={false} onRefresh={fetchAppData} tintColor={colors.accent} />}
-    >
-      
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={styles.container}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: spacing.xxl }}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={fetchAppData} tintColor={colors.accent} />}
+      >
+
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <Text style={styles.sectionTitle}>{editingId ? 'Edit Plan' : 'Create New Plan'}</Text>
@@ -143,16 +190,16 @@ export default function PlansScreen() {
           </View>
         </View>
 
-        <Button 
-          title={editingId ? "Update Plan" : "Save Plan"} 
-          onPress={handleSave} 
+        <Button
+          title={editingId ? "Update Plan" : "Save Plan"}
+          onPress={handleSave}
           loading={loading}
           style={styles.saveBtn}
         />
       </View>
 
       <Text style={[styles.sectionTitle, { marginLeft: spacing.xs, marginBottom: spacing.sm }]}>Existing Plans</Text>
-      
+
       {plans.length === 0 ? (
         <Text style={styles.emptyText}>No plans found. Create one above.</Text>
       ) : (
@@ -174,7 +221,9 @@ export default function PlansScreen() {
         ))
       )}
 
-      <CustomAlert 
+      </ScrollView>
+
+      <CustomAlert
         visible={alertConfig.visible}
         title={alertConfig.title}
         message={alertConfig.message}
@@ -183,7 +232,13 @@ export default function PlansScreen() {
         onClose={hideAlert}
       />
 
-    </ScrollView>
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={colors.accent} />
+          {loadingText ? <Text style={styles.loadingMsg}>{loadingText}</Text> : null}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -299,5 +354,17 @@ const getStyles = (colors) => StyleSheet.create({
   loadingInline: {
     marginTop: spacing.sm,
     alignItems: 'center',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  loadingMsg: {
+    color: '#fff',
+    marginTop: spacing.md,
+    fontWeight: '600',
   },
 });
