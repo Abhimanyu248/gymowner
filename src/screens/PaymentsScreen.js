@@ -421,7 +421,21 @@ export default function PaymentsScreen() {
                     {p.notes ? (
                       <View style={styles.expandedRow}>
                         <Text style={styles.expandedLabel}>Notes:</Text>
-                        <Text style={styles.expandedValue}>{p.notes}</Text>
+                        {p.notes.includes('-') ? (
+                          (() => {
+                            const parts = p.notes.split('-');
+                            const firstRow = parts[0].trim();
+                            const secondRow = parts.slice(1).map(x => x.trim()).filter(Boolean).join(' ');
+                            return (
+                              <>
+                                {firstRow ? <Text style={styles.expandedValue}>{firstRow}</Text> : null}
+                                {secondRow ? <Text style={[styles.expandedValue, { marginTop: 2 }]}>{secondRow}</Text> : null}
+                              </>
+                            );
+                          })()
+                        ) : (
+                          <Text style={styles.expandedValue}>{p.notes}</Text>
+                        )}
                       </View>
                     ) : null}
 
