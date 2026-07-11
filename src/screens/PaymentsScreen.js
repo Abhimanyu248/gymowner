@@ -11,6 +11,7 @@ import MetricCard from '../components/MetricCard';
 import CustomAlert from '../components/CustomAlert';
 import { radius, spacing, typography } from '../theme/theme';
 import { useThemeColors } from '../theme/palette';
+import AppBackground from '../components/AppBackground';
 
 // ─── Pagination helper ──────────────────────────────────────────────────────
 function getPageNumbers(currentPage, totalPages) {
@@ -383,7 +384,8 @@ export default function PaymentsScreen() {
   };
 
   return (
-    <View style={styles.root}>
+    <AppBackground>
+      <View style={styles.root}>
       <FlatList
         data={filteredPayments.length === 0 ? [] : paginatedPayments}
         keyExtractor={(p, idx) => p.id || p._id || String(idx)}
@@ -689,14 +691,15 @@ export default function PaymentsScreen() {
           {loadingText ? <Text style={styles.loadingMsg}>{loadingText}</Text> : null}
         </View>
       )}
-    </View>
+      </View>
+    </AppBackground>
   );
 }
 
 const getStyles = (colors) => StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
   },
   container: {
     flex: 1,

@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useAppStore } from '../store/useAppStore';
 import { useThemeColors } from '../theme/palette';
+import AppBackground from '../components/AppBackground';
 import Button from '../components/Button';
 import { colors, radius, spacing, typography } from '../theme/theme';
 import { api } from '../utils/api';
@@ -496,7 +497,7 @@ export default function SettingsScreen({ navigation }) {
   );
 
   return (
-    <>
+    <AppBackground>
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
@@ -873,7 +874,7 @@ export default function SettingsScreen({ navigation }) {
         {...alertConfig} 
         onClose={() => setAlertConfig({ ...alertConfig, visible: false })} 
       />
-    </>
+      </AppBackground>
   );
 }
 
@@ -881,7 +882,7 @@ const getStyles = (palette, isDark) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: palette.background,
+      backgroundColor: 'transparent',
       paddingHorizontal: 18,
       paddingTop: 16,
     },

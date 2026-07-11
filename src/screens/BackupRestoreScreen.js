@@ -9,6 +9,7 @@ import { useAppStore } from '../store/useAppStore';
 import CustomAlert from '../components/CustomAlert';
 import { radius, spacing, typography } from '../theme/theme';
 import { useThemeColors } from '../theme/palette';
+import AppBackground from '../components/AppBackground';
 import { Download, Upload, ShieldCheck, Database, FolderEdit } from 'lucide-react-native';
 import { api } from '../utils/api';
 
@@ -305,7 +306,8 @@ export default function BackupRestoreScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
+    <AppBackground>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
       <View style={styles.header}>
         {Platform.OS === 'android' && (
           <TouchableOpacity 
@@ -375,13 +377,14 @@ export default function BackupRestoreScreen() {
         onClose={hideAlert}
       />
     </ScrollView>
+    </AppBackground>
   );
 }
 
 const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
   },
   content: {
     padding: spacing.lg,

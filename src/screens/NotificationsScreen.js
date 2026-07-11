@@ -5,6 +5,7 @@ import Button from '../components/Button';
 import CustomAlert from '../components/CustomAlert';
 import { radius, spacing, typography } from '../theme/theme';
 import { useThemeColors } from '../theme/palette';
+import AppBackground from '../components/AppBackground';
 import { Bell, Send, Clock, Users } from 'lucide-react-native';
 
 export default function NotificationsScreen() {
@@ -70,7 +71,8 @@ export default function NotificationsScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}>
+    <AppBackground>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}>
       
       <View style={styles.header}>
         <View style={[styles.iconContainer, { backgroundColor: `${colors.accent}15` }]}>
@@ -169,13 +171,14 @@ export default function NotificationsScreen() {
         onClose={hideAlert}
       />
     </ScrollView>
+    </AppBackground>
   );
 }
 
 const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
   },
   header: {
     alignItems: 'center',

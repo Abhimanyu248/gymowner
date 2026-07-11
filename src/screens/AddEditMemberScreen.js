@@ -22,6 +22,7 @@ import Button from "../components/Button";
 import CustomAlert from "../components/CustomAlert";
 import { radius, spacing, typography } from "../theme/theme";
 import { useThemeColors } from "../theme/palette";
+import AppBackground from "../components/AppBackground";
 import { Share2 } from "lucide-react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
@@ -475,11 +476,12 @@ export default function AddEditMemberScreen({ route, navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior="padding"
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-    >
+    <AppBackground>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      >
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
@@ -787,7 +789,8 @@ export default function AddEditMemberScreen({ route, navigation }) {
         onClose={hideAlert}
       />
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </AppBackground>
   );
 }
 
@@ -795,7 +798,7 @@ const getStyles = (colors) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: 'transparent',
       padding: spacing.md,
     },
     photoContainer: {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
+import AppBackground from '../components/AppBackground';
 import Button from '../components/Button';
 import CustomAlert from '../components/CustomAlert';
 import { radius, spacing, typography } from '../theme/theme';
@@ -135,7 +136,7 @@ export default function PlansScreen() {
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <AppBackground>
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
@@ -238,14 +239,14 @@ export default function PlansScreen() {
           {loadingText ? <Text style={styles.loadingMsg}>{loadingText}</Text> : null}
         </View>
       )}
-    </View>
+    </AppBackground>
   );
 }
 
 const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
     padding: spacing.md,
   },
   card: {

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, TouchableOpacity, Pressable, Animated, Easing, Modal } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
 import MetricCard from '../components/MetricCard';
+import AppBackground from '../components/AppBackground';
 import { radius, spacing, shadows } from '../theme/theme';
 import { useThemeColors } from '../theme/palette';
 import { LineChart } from 'react-native-chart-kit';
@@ -670,7 +671,8 @@ export default function DashboardScreen() {
   const activeMonthData = chartData[activeMonthIndex] || chartData[new Date().getMonth()] || chartData[0];
 
   return (
-    <ScrollView
+    <AppBackground>
+      <ScrollView
       style={styles.container}
       showsVerticalScrollIndicator={false}
       showsHorizontalScrollIndicator={false}
@@ -1145,13 +1147,14 @@ export default function DashboardScreen() {
         </View>
       </View>
     </ScrollView>
+    </AppBackground>
   );
 }
 
 const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
     padding: spacing.md,
   },
   header: {

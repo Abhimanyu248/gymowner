@@ -4,6 +4,7 @@ import PagerView from 'react-native-pager-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Phone, MessageCircle, UserRound, ChevronRight, CalendarDays, MapPin, Activity, AlertCircle, Bell, Key, UserRoundPen, Share2, Mail, CalendarClock, Salad, ChefHat, Plus, Minus } from 'lucide-react-native';
 import { useAppStore } from '../store/useAppStore';
+import AppBackground from '../components/AppBackground';
 import Button from '../components/Button';
 import CustomAlert from '../components/CustomAlert';
 import { radius, spacing, typography } from '../theme/theme';
@@ -553,8 +554,9 @@ Let's keep making gains! 💯`;
   };
 
   return (
-    <ScrollView
-      style={styles.container}
+    <AppBackground>
+      <ScrollView
+        style={styles.container}
       showsVerticalScrollIndicator={false}
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.content}
@@ -1071,6 +1073,7 @@ Let's keep making gains! 💯`;
 
 
     </ScrollView>
+    </AppBackground>
   );
 }
 
@@ -1078,7 +1081,7 @@ const getStyles = (colors) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: 'transparent',
     },
     content: {
       padding: spacing.md,

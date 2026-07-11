@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AppBackground from '../components/AppBackground';
 
 import { useAppStore } from '../store/useAppStore';
 import MemberCard from '../components/MemberCard';
@@ -720,7 +721,8 @@ export default function MembersScreen({ navigation }) {
   }, [result.length, activePage, isPaginated, totalPages, colors, styles]);
 
   return (
-    <View style={styles.container}>
+    <AppBackground>
+      <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.screenHeading}>Member Details</Text>
@@ -873,7 +875,8 @@ export default function MembersScreen({ navigation }) {
         colors={colors}
         insets={insets}
       />
-    </View>
+      </View>
+    </AppBackground>
   );
 }
 
@@ -1098,7 +1101,7 @@ const sheetStyles = (colors, insets) => StyleSheet.create({
 
 // ─── Screen Styles ────────────────────────────────────────────────────────────
 const getStyles = (colors, insets) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: 'transparent' },
   header: {
     padding: spacing.md,
     backgroundColor: colors.surface,
