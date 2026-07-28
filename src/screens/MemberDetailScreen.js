@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Platform, TouchableOpacity, Linking, Modal, Pressable, RefreshControl, Animated, Easing, BackHandler, Switch, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, Platform, TouchableOpacity, Linking, Modal, Pressable, RefreshControl, Animated, Easing, BackHandler, Switch, ActivityIndicator, KeyboardAvoidingView, Alert } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Phone, MessageCircle, UserRound, ChevronRight, CalendarDays, MapPin, Activity, AlertCircle, Bell, Key, UserRoundPen, Share2, Mail, CalendarClock, Salad, ChefHat, Plus, Minus } from 'lucide-react-native';
@@ -32,6 +32,7 @@ export default function MemberDetailScreen({ route, navigation }) {
   const [reminderLoading, setReminderLoading] = useState(false);
   const [renewForm, setRenewForm] = useState({ membershipType: '', joinDate: '', paymentMethod: 'cash', discount: '', notes: '' });
   const [renewError, setRenewError] = useState('');
+  const [renewLoading, setRenewLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [alertConfig, setAlertConfig] = useState({ visible: false });
@@ -272,25 +273,48 @@ export default function MemberDetailScreen({ route, navigation }) {
     }).start();
   };
 
-  const closeRenewSheet = () => {
+  const closeRenewSheet = (onClosed) => {
     Animated.timing(renewSheetY, {
       toValue: 520,
-      duration: 240,
+      duration: 200,
       easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
       setShowRenewSheet(false);
       setShowDatePicker(false);
       setRenewError('');
+      if (typeof onClosed === 'function') {
+        onClosed();
+      }
     });
   };
 
-  const handleSaveRenew = async () => {
+  const handleSaveRenew = () => {
     const pickedPlan = plans.find((p) => p.name === renewForm.membershipType);
     if (!pickedPlan) return setRenewError('Please select a valid plan.');
     if (!renewForm.joinDate) return setRenewError('Please select a joining date.');
 
-    setLoading(true);
+    const basePrice = Number(pickedPlan.amount || pickedPlan.price || 0);
+    const discountVal = Number(renewForm.discount) || 0;
+    const finalAmount = Math.max(0, basePrice - discountVal);
+
+    showAlert(
+      'Confirm Renewal',
+      `Are you sure you want to renew ${member?.name || 'member'}'s membership with ${pickedPlan.name} Plan for Rs ${finalAmount.toLocaleString()}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm Renewal',
+          onPress: () => processRenew(pickedPlan, finalAmount),
+        },
+      ],
+      'info'
+    );
+  };
+
+  const processRenew = async (pickedPlan, finalAmount) => {
+    setRenewLoading(true);
+    setRenewError('');
     try {
       const joinDate = new Date(renewForm.joinDate);
       joinDate.setHours(13, 0, 0, 0);
@@ -299,34 +323,44 @@ export default function MemberDetailScreen({ route, navigation }) {
       nextExpiry.setDate(nextExpiry.getDate() - 1);
       nextExpiry.setHours(23, 59, 59, 999);
 
-      await updateMember(member.id, {
-        planId: pickedPlan.id || pickedPlan._id,
-        joinDate: joinDate.toISOString(),
-        expiryDate: nextExpiry.toISOString(),
-        status: 'active',
-      });
-
-      const basePrice = Number(pickedPlan.amount || pickedPlan.price || 0);
-      const discountVal = Number(renewForm.discount) || 0;
-      const finalAmount = Math.max(0, basePrice - discountVal);
-
       const paymentNotes = renewForm.notes
         ? `Renewal for ${pickedPlan.name} Plan - ${renewForm.notes.trim()}`
         : `Renewal for ${pickedPlan.name} Plan`;
 
-      await addPayment({
-        memberId: member.id,
-        amount: finalAmount,
-        paymentMethod: renewForm.paymentMethod || 'cash',
-        notes: paymentNotes,
-      });
+      // Perform update member and create payment in parallel for ultra-fast performance
+      await Promise.all([
+        updateMember(
+          member.id,
+          {
+            planId: pickedPlan.id || pickedPlan._id,
+            joinDate: joinDate.toISOString(),
+            expiryDate: nextExpiry.toISOString(),
+            status: 'active',
+          },
+          false,
+          true // skipFetch
+        ),
+        addPayment(
+          {
+            memberId: member.id,
+            amount: finalAmount,
+            paymentMethod: renewForm.paymentMethod || 'cash',
+            notes: paymentNotes,
+          },
+          true // skipFetch
+        ),
+      ]);
 
-      closeRenewSheet();
-      setTimeout(() => showAlert('Success', 'Membership renewed successfully!', [{ text: 'OK' }], 'success'), 320);
+      // Sync store data in background
+      fetchAppData(true);
+
+      closeRenewSheet(() => {
+        showAlert('Success', 'Membership renewed successfully!', [{ text: 'OK' }], 'success');
+      });
     } catch (err) {
-      setRenewError('Failed to renew membership.');
+      setRenewError(err?.message || 'Failed to renew membership.');
     } finally {
-      setLoading(false);
+      setRenewLoading(false);
     }
   };
 
@@ -1068,6 +1102,7 @@ Let's keep making gains! 💯`;
               membershipTypes={plans}
               renewError={renewError}
               renewForm={renewForm}
+              loading={renewLoading}
               onBack={closeRenewSheet}
               onChange={(field, value) => setRenewForm((prev) => ({ ...prev, [field]: value }))}
               onDatePress={() => setShowDatePicker(true)}
@@ -1082,6 +1117,16 @@ Let's keep making gains! 💯`;
               />
             )}
           </Animated.View>
+          <CustomAlert
+            visible={alertConfig.visible}
+            title={alertConfig.title}
+            message={alertConfig.message}
+            buttons={alertConfig.buttons}
+            type={alertConfig.type}
+            icon={alertConfig.icon}
+            onClose={hideAlert}
+            useModal={false}
+          />
         </KeyboardAvoidingView>
       </Modal>
 

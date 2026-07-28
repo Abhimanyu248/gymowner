@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TouchableOpacity, View, StyleSheet, TextInput } from 'react-native';
+import { Text, TouchableOpacity, View, StyleSheet, TextInput, ActivityIndicator } from 'react-native';
 import { ChevronLeft } from 'lucide-react-native';
 import { useThemeColors } from '../theme/palette';
 import { radius, spacing, typography } from '../theme/theme';
@@ -14,13 +14,14 @@ export default function RenewMembershipSection({
   onChange,
   onDatePress,
   onSave,
+  loading = false,
 }) {
   const colors = useThemeColors();
   const styles = getStyles(colors);
 
   return (
     <View style={styles.panel}>
-      <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.backButton} onPress={onBack} disabled={loading} activeOpacity={0.85}>
         <ChevronLeft color={colors.textPrimary} size={18} />
         <Text style={styles.backButtonText}>Back to Member</Text>
       </TouchableOpacity>
@@ -37,6 +38,7 @@ export default function RenewMembershipSection({
               key={type.id || type._id || type.name}
               style={[styles.membershipChip, active && styles.membershipChipActive]}
               onPress={() => onChange('membershipType', type.name)}
+              disabled={loading}
               activeOpacity={0.85}
             >
               <Text style={[styles.membershipChipText, active && styles.membershipChipTextActive]}>{type.name}</Text>
@@ -45,7 +47,7 @@ export default function RenewMembershipSection({
         })}
       </View>
 
-      <TouchableOpacity style={styles.dateInput} onPress={onDatePress} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.dateInput} onPress={onDatePress} disabled={loading} activeOpacity={0.85}>
         <Text style={styles.dateInputLabel}>New Joining Date</Text>
         <Text style={[styles.dateInputValue, !renewForm.joinDate && styles.dateInputPlaceholder]}>
           {formatDateLabel(renewForm.joinDate)}
@@ -61,6 +63,7 @@ export default function RenewMembershipSection({
               key={method}
               style={[styles.membershipChip, active && styles.membershipChipActive]}
               onPress={() => onChange('paymentMethod', method)}
+              disabled={loading}
               activeOpacity={0.85}
             >
               <Text style={[styles.membershipChipText, active && styles.membershipChipTextActive]}>
@@ -78,6 +81,7 @@ export default function RenewMembershipSection({
         placeholderTextColor={colors.textMuted}
         keyboardType="numeric"
         value={renewForm.discount}
+        editable={!loading}
         onChangeText={(val) => onChange('discount', val)}
       />
 
@@ -87,13 +91,26 @@ export default function RenewMembershipSection({
         placeholder="Enter payment notes (e.g. Reference ID)"
         placeholderTextColor={colors.textMuted}
         value={renewForm.notes}
+        editable={!loading}
         onChangeText={(val) => onChange('notes', val)}
       />
 
       {renewError ? <Text style={styles.errorText}>{renewError}</Text> : null}
 
-      <TouchableOpacity style={styles.buttonPrimary} onPress={onSave} activeOpacity={0.9}>
-        <Text style={styles.buttonText}>Confirm Renewal</Text>
+      <TouchableOpacity
+        style={[styles.buttonPrimary, loading && styles.buttonDisabled]}
+        onPress={onSave}
+        disabled={loading}
+        activeOpacity={0.85}
+      >
+        {loading ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
+            <Text style={styles.buttonText}>Renewing...</Text>
+          </View>
+        ) : (
+          <Text style={styles.buttonText}>Confirm Renewal</Text>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -205,6 +222,14 @@ const getStyles = (colors) =>
       justifyContent: 'center',
       alignItems: 'center',
       height: 50,
+    },
+    buttonDisabled: {
+      opacity: 0.7,
+    },
+    loadingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     buttonText: {
       color: '#FFFFFF',

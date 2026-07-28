@@ -232,13 +232,16 @@ export const useAppStore = create((set, get) => ({
     return mapped;
   },
   
-  updateMember: async (id, payload, silent = false) => {
+  updateMember: async (id, payload, silent = false, skipFetch = false) => {
     const updated = await api.updateMember(id, payload);
     const mapped = { ...updated, id: updated._id || updated.id };
     set(state => ({
       members: state.members.map(m => (m.id === id || m._id === id ? mapped : m))
     }));
-    await get().fetchAppData(true);
+    if (!skipFetch) {
+      await get().fetchAppData(true);
+    }
+    return mapped;
   },
 
   deleteMember: async (id, hard = false) => {
@@ -310,13 +313,16 @@ export const useAppStore = create((set, get) => ({
   },
 
   // Payment Operations
-  addPayment: async (payload) => {
+  addPayment: async (payload, skipFetch = false) => {
     const payment = await api.createPayment(payload);
     const mapped = { ...payment, id: payment._id || payment.id };
     set(state => ({
       payments: [mapped, ...state.payments]
     }));
-    await get().fetchAppData(true);
+    if (!skipFetch) {
+      await get().fetchAppData(true);
+    }
+    return mapped;
   },
 
   deletePayment: async (id) => {

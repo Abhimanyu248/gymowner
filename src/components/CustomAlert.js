@@ -59,6 +59,7 @@ const CustomAlert = ({
   type = 'info',
   icon,
   onClose,
+  useModal = true,
 }) => {
   const colors = useThemeColors();
   
@@ -147,31 +148,43 @@ const CustomAlert = ({
     );
   };
 
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.modalCard}>
-          {/* Header Icon */}
-          <View style={[styles.iconContainer, { backgroundColor: iconInfo.iconBg }]}>
-            {renderIcon()}
-          </View>
+  const alertContent = (
+    <View style={styles.overlay}>
+      <View style={styles.modalCard}>
+        {/* Header Icon */}
+        <View style={[styles.iconContainer, { backgroundColor: iconInfo.iconBg }]}>
+          {renderIcon()}
+        </View>
 
-          {/* Alert Title */}
-          {title ? <Text style={styles.title}>{title}</Text> : null}
+        {/* Alert Title */}
+        {title ? <Text style={styles.title}>{title}</Text> : null}
 
-          {/* Alert Message */}
-          {message ? <Text style={styles.message}>{message}</Text> : null}
+        {/* Alert Message */}
+        {message ? <Text style={styles.message}>{message}</Text> : null}
 
-          {/* Buttons/Actions Container */}
-          <View style={type === 'action' ? styles.actionList : styles.actions}>
-            {buttons.map((btn, index) => 
-              type === 'action' 
-                ? renderActionButton(btn, index) 
-                : renderStandardButton(btn, index)
-            )}
-          </View>
+        {/* Buttons/Actions Container */}
+        <View style={type === 'action' ? styles.actionList : styles.actions}>
+          {buttons.map((btn, index) => 
+            type === 'action' 
+              ? renderActionButton(btn, index) 
+              : renderStandardButton(btn, index)
+          )}
         </View>
       </View>
+    </View>
+  );
+
+  if (!useModal) {
+    return (
+      <View style={[StyleSheet.absoluteFillObject, { zIndex: 99999, elevation: 99999 }]}>
+        {alertContent}
+      </View>
+    );
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {alertContent}
     </Modal>
   );
 };
