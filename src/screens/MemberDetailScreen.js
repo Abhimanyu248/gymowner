@@ -851,7 +851,21 @@ Let's keep making gains! 💯`;
                       <View style={{ flex: 1 }}>
                         <Text style={styles.historyDate}>{formatDate(payment.paidOn || payment.createdAt)}</Text>
                         <Text style={styles.historyMeta}>{(payment.paymentMethod || 'cash').toUpperCase()}</Text>
-                        <Text style={styles.historyMeta}>{(payment.notes || 'payment received')}</Text>
+                        {(() => {
+                          const notesText = payment.notes || 'payment received';
+                          if (notesText.includes('-')) {
+                            const parts = notesText.split('-');
+                            const firstRow = parts[0].trim();
+                            const secondRow = parts.slice(1).map(x => x.trim()).filter(Boolean).join(' - ');
+                            return (
+                              <>
+                                {firstRow ? <Text style={styles.historyMeta}>{firstRow}</Text> : null}
+                                {secondRow ? <Text style={styles.historyMeta}>{secondRow}</Text> : null}
+                              </>
+                            );
+                          }
+                          return <Text style={styles.historyMeta}>{notesText}</Text>;
+                        })()}
                       </View>
                       <Text style={styles.historyAmount}>Rs {Number(payment.amount || 0).toLocaleString()}</Text>
                     </View>
